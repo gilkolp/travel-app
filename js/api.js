@@ -4,8 +4,9 @@
   'use strict';
 
   var OVERPASS_URLS = [
+    'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
-    'https://overpass-api.de/api/interpreter'
+    'https://overpass.private.coffee/api/interpreter'
   ];
   var GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search';
   var FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
@@ -91,7 +92,7 @@
   function overpassOnce(url, query) {
     var controller = ('AbortController' in window) ? new AbortController() : null;
     var timer = controller
-      ? setTimeout(function () { controller.abort(); }, 45000)
+      ? setTimeout(function () { controller.abort(); }, 75000)
       : null;
     return fetch(url, {
       method: 'POST',
