@@ -365,6 +365,7 @@
     box.innerHTML = places.map(function (p) {
       return '<div class="list-item">' +
         '<div class="item-title">' + esc(p.name) + '</div>' +
+        (p.localName ? '<div class="item-sub">בשפת המקום: ' + esc(p.localName) + '</div>' : '') +
         '<div class="item-sub">' +
         (p.kind ? esc(p.kind) + ' · ' : '') + API.formatDistance(p.distanceKm) +
         (p.cuisine ? ' · ' + esc(p.cuisine) : '') +

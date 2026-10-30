@@ -4,8 +4,8 @@
   'use strict';
 
   var OVERPASS_URLS = [
-    'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter'
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass-api.de/api/interpreter'
   ];
   var GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search';
   var FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
@@ -91,7 +91,7 @@
   function overpassOnce(url, query) {
     var controller = ('AbortController' in window) ? new AbortController() : null;
     var timer = controller
-      ? setTimeout(function () { controller.abort(); }, 60000)
+      ? setTimeout(function () { controller.abort(); }, 45000)
       : null;
     return fetch(url, {
       method: 'POST',
@@ -124,10 +124,12 @@
     var lon = el.lon != null ? el.lon : (el.center && el.center.lon);
     if (lat == null || lon == null) return null;
     var tags = el.tags || {};
-    var nm = tags.name || tags['name:he'] || '';
+    var nm = tags['name:he'] || tags['name:en'] || tags.name || '';
     if (!nm) return null;
     return {
       name: nm,
+      localName: (tags.name && tags.name !== nm) ? tags.name : '',
+      searchText: (tags.name || '') + ' ' + (tags['name:he'] || '') + ' ' + (tags['name:en'] || ''),
       lat: lat,
       lon: lon,
       kind: tags.tourism || tags.amenity || tags.historic || tags.leisure || '',
@@ -166,18 +168,23 @@
       'nwr["diet:kosher"="yes"](around:9000,' + lat + ',' + lon + ');' +
       'nwr["kosher"="yes"](around:9000,' + lat + ',' + lon + ');' +
       'nwr["amenity"~"restaurant|cafe|fast_food|bakery"]["name"~"kosher|כשר",i](around:9000,' + lat + ',' + lon + ');' +
-      ');out center 120;';
+      ');out center 60;';
     return overpass(q).then(function (els) { return collect(els, lat, lon, 40); });
   }
 
   function findChabad(lat, lon) {
+    // חיפוש ממוקד לפי סוג מקום + שם — סריקת שם בלבד על רדיוס גדול כבדה מדי לשרת ופגה בזמן.
+    var rx = 'Chabad|Lubavitch|Habad|בית חב|חב״ד|חב"ד';
     var q = '[out:json][timeout:25];(' +
-      'nwr["name"~"Chabad|Lubavitch|Habad|חב",i](around:25000,' + lat + ',' + lon + ');' +
-      'nwr["name:he"~"בית חב|חבד|חב״ד"](around:25000,' + lat + ',' + lon + ');' +
+      'nwr["amenity"="place_of_worship"]["name"~"' + rx + '",i](around:15000,' + lat + ',' + lon + ');' +
+      'nwr["building"="synagogue"]["name"~"' + rx + '",i](around:15000,' + lat + ',' + lon + ');' +
+      'nwr["amenity"="community_centre"]["name"~"' + rx + '",i](around:15000,' + lat + ',' + lon + ');' +
+      'nwr["name:he"~"בית חב|חבד|חב״ד"](around:15000,' + lat + ',' + lon + ');' +
+      'nwr["operator"~"Chabad|Lubavitch",i](around:15000,' + lat + ',' + lon + ');' +
       ');out center 60;';
     return overpass(q).then(function (els) {
       return collect(els, lat, lon, 30).filter(function (p) {
-        return /chabad|lubavitch|habad|חב/i.test(p.name);
+        return /chabad|lubavitch|habad|חב/i.test(p.searchText || p.name);
       });
     });
   }
