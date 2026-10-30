@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0e7c66"/>
+  <text x="256" y="300" font-size="250" text-anchor="middle" dominant-baseline="central">✈️</text>
+  <text x="256" y="440" font-size="54" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-weight="bold">טיולים</text>
+</svg>

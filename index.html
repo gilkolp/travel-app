@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>הטיולים שלי — אפליקציית טיולים</title>
+<meta name="description" content="אפליקציית טיולים אישית: מסלול לפי חלקי טיול, אטרקציות, אוכל כשר, בית חב״ד, לינה, יומן ומסמכים.">
+<meta name="theme-color" content="#0e7c66">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="topbar">
+  <div class="clocks">
+    <div class="clock">
+      <span class="clock-label">🇮🇱 ישראל</span>
+      <span id="clock-il" class="clock-time">--:--:--</span>
+      <span id="date-il" class="clock-date"></span>
+    </div>
+    <div class="clock-dest-divider"></div>
+    <div class="clock">
+      <span class="clock-label" id="clock-dest-label">🌍 היעד</span>
+      <span id="clock-dest" class="clock-time">--:--:--</span>
+      <span id="date-dest" class="clock-date"></span>
+    </div>
+  </div>
+  <div class="topbar-row">
+    <label for="active-stop-select">החלק הפעיל בטיול</label>
+    <select id="active-stop-select"></select>
+  </div>
+  <div class="topbar-row">
+    <label for="author-select">מי מעדכן</label>
+    <select id="author-select"></select>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ===== בית ===== -->
+  <section id="screen-home" class="screen active">
+    <div class="card">
+      <div class="card-head">
+        <h2>הטיול שלי</h2>
+        <button class="btn small" id="btn-new-trip">+ טיול חדש</button>
+      </div>
+      <div id="no-trip-msg" class="empty">עדיין לא יצרת טיול. לחץ על "טיול חדש" כדי להתחיל.</div>
+      <div id="trip-box" hidden>
+        <label class="field">
+          <span>בחר טיול</span>
+          <select id="trip-select"></select>
+        </label>
+        <div id="trip-summary" class="trip-summary"></div>
+        <button class="btn danger small" id="btn-delete-trip">מחק טיול</button>
+      </div>
+      <form id="trip-form" class="form" hidden>
+        <h3>טיול חדש</h3>
+        <label class="field"><span>שם הטיול</span>
+          <input type="text" id="trip-name" placeholder="למשל: יפן 2026" required>
+        </label>
+        <label class="field"><span>מדינה (חיפוש ימלא קואורדינטות ואזור זמן)</span>
+          <input type="text" id="trip-country" placeholder="למשל: יפן" required>
+        </label>
+        <div id="trip-country-results" class="search-results"></div>
+        <div class="form-row">
+          <label class="field"><span>תאריך התחלה</span>
+            <input type="date" id="trip-start">
+          </label>
+          <label class="field"><span>תאריך סיום</span>
+            <input type="date" id="trip-end">
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn primary">צור טיול</button>
+          <button type="button" class="btn" id="trip-form-cancel">ביטול</button>
+        </div>
+        <p class="hint">ייווצר אוטומטית "חלק כללי" על שם המדינה. אפשר לחלק אחר כך לערים במסך "מסלול".</p>
+      </form>
+    </div>
+
+    <div class="card" id="weather-card">
+      <div class="card-head">
+        <h2>🌦️ מזג אוויר</h2>
+        <button class="btn small" id="btn-refresh-weather">רענן</button>
+      </div>
+      <div id="weather-place" class="muted"></div>
+      <div id="weather-days" class="weather-days"></div>
+    </div>
+
+    <div class="card">
+      <h2>קיצורי דרך</h2>
+      <div class="shortcut-grid">
+        <button class="shortcut" data-goto="route">🗺️<span>מסלול</span></button>
+        <button class="shortcut" data-goto="discover">📍<span>אטרקציות</span></button>
+        <button class="shortcut" data-goto="discover" data-tab="kosher">🍽️<span>אוכל כשר</span></button>
+        <button class="shortcut" data-goto="discover" data-tab="chabad">🕎<span>בית חב״ד</span></button>
+        <button class="shortcut" data-goto="stay">🛏️<span>לינה</span></button>
+        <button class="shortcut" data-goto="journal">📖<span>יומן</span></button>
+        <button class="shortcut" data-goto="documents">🗂️<span>מסמכים</span></button>
+        <button class="shortcut" data-goto="share">🔗<span>שיתוף</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== מסלול ===== -->
+  <section id="screen-route" class="screen">
+    <div class="card">
+      <div class="card-head">
+        <h2>🗺️ חלקי הטיול (מסלול)</h2>
+        <button class="btn small" id="btn-new-stop">+ חלק חדש</button>
+      </div>
+      <div id="stops-list"></div>
+      <form id="stop-form" class="form" hidden>
+        <h3 id="stop-form-title">חלק חדש</h3>
+        <input type="hidden" id="stop-id">
+        <label class="field"><span>חיפוש עיר (ימלא קואורדינטות ואזור זמן)</span>
+          <input type="text" id="stop-search" placeholder="למשל: טוקיו">
+        </label>
+        <div id="stop-search-results" class="search-results"></div>
+        <label class="field"><span>שם העיר / החלק</span>
+          <input type="text" id="stop-city" required>
+        </label>
+        <label class="field"><span>מדינה</span>
+          <input type="text" id="stop-country">
+        </label>
+        <div class="form-row">
+          <label class="field"><span>תאריך הגעה</span>
+            <input type="date" id="stop-arrival">
+          </label>
+          <label class="field"><span>תאריך עזיבה</span>
+            <input type="date" id="stop-departure">
+          </label>
+        </div>
+        <input type="hidden" id="stop-lat">
+        <input type="hidden" id="stop-lon">
+        <input type="hidden" id="stop-tz">
+        <div id="stop-geo-info" class="hint"></div>
+        <div class="form-actions">
+          <button type="submit" class="btn primary">שמור חלק</button>
+          <button type="button" class="btn" id="stop-form-cancel">ביטול</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>👥 שותפים לטיול</h2>
+      </div>
+      <div id="members-list"></div>
+      <form id="member-form" class="form inline">
+        <label class="field"><span>שם</span>
+          <input type="text" id="member-name" placeholder="שם השותף" required>
+        </label>
+        <label class="field"><span>תפקיד</span>
+          <select id="member-role">
+            <option value="editor">שותף מעדכן</option>
+            <option value="follower">עוקב</option>
+          </select>
+        </label>
+        <button type="submit" class="btn primary">הוסף</button>
+      </form>
+      <p class="hint">בחירת "מי מעדכן" למעלה נשמרת ליד כל רשומת יומן, חלק ומסמך שתוסיף.</p>
+    </div>
+  </section>
+
+  <!-- ===== גילוי: אטרקציות / כשר / חב"ד ===== -->
+  <section id="screen-discover" class="screen">
+    <div class="tabs" id="discover-tabs">
+      <button class="tab active" data-tab="attractions">📍 אטרקציות</button>
+      <button class="tab" data-tab="kosher">🍽️ אוכל כשר</button>
+      <button class="tab" data-tab="chabad">🕎 בית חב״ד</button>
+    </div>
+    <div class="card">
+      <div id="discover-place" class="muted"></div>
+      <div class="form-actions">
+        <button class="btn primary" id="btn-search-stop">חפש סביב החלק הפעיל</button>
+        <button class="btn" id="btn-search-around">📍 מסביבי עכשיו</button>
+      </div>
+      <div id="discover-status" class="muted"></div>
+      <div id="discover-results" class="results-list"></div>
+    </div>
+  </section>
+
+  <!-- ===== לינה ===== -->
+  <section id="screen-stay" class="screen">
+    <div class="card">
+      <h2>🛏️ לינה</h2>
+      <p class="muted" id="stay-place"></p>
+      <p>חיפוש מלונות ודירות לפי היעד והתאריכים של החלק הפעיל. ההזמנה עצמה מתבצעת באתר ההזמנות.</p>
+      <div class="stay-links">
+        <a class="btn primary big" id="stay-booking" href="#" target="_blank" rel="noopener">חיפוש ב־Booking.com</a>
+        <a class="btn big" id="stay-airbnb" href="#" target="_blank" rel="noopener">חיפוש ב־Airbnb</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== יומן ===== -->
+  <section id="screen-journal" class="screen">
+    <div class="card">
+      <div class="card-head">
+        <h2>📖 יומן הטיול</h2>
+        <button class="btn small primary" id="btn-slideshow">🎞️ מצגת סיום</button>
+      </div>
+      <form id="journal-form" class="form">
+        <label class="field"><span>תאריך</span>
+          <input type="date" id="journal-date" required>
+        </label>
+        <label class="field"><span>מה עשינו היום?</span>
+          <textarea id="journal-text" rows="3" placeholder="כתוב כאן על היום שעבר..."></textarea>
+        </label>
+        <label class="field"><span>תמונה</span>
+          <input type="file" id="journal-photo" accept="image/*">
+        </label>
+        <button type="submit" class="btn primary">הוסף ליומן</button>
+      </form>
+    </div>
+    <div id="journal-list"></div>
+  </section>
+
+  <!-- ===== מסמכים ===== -->
+  <section id="screen-documents" class="screen">
+    <div class="card">
+      <h2>🗂️ מסמכי הטיול</h2>
+      <form id="document-form" class="form">
+        <label class="field"><span>כותרת</span>
+          <input type="text" id="document-title" placeholder="למשל: ביטוח נסיעות" required>
+        </label>
+        <label class="field"><span>קטגוריה</span>
+          <select id="document-category">
+            <option value="insurance">ביטוח</option>
+            <option value="booking">הזמנה</option>
+            <option value="ticket">כרטיס</option>
+            <option value="other">אחר</option>
+          </select>
+        </label>
+        <label class="field"><span>קובץ</span>
+          <input type="file" id="document-file" required>
+        </label>
+        <button type="submit" class="btn primary">העלה מסמך</button>
+      </form>
+    </div>
+    <div id="documents-list"></div>
+  </section>
+
+  <!-- ===== שיתוף ===== -->
+  <section id="screen-share" class="screen">
+    <div class="card">
+      <h2>🔗 שיתוף הטיול</h2>
+      <p>ייצוא עמוד HTML אחד, עצמאי וקריא בלבד, עם המסלול, החלק הפעיל והיומן (בלי קבצי המסמכים). הורד את העמוד ושלח אותו למשפחה ולחברים — הם יוכלו לעקוב איפה אתה ומה אתה עושה.</p>
+      <button class="btn primary big" id="btn-export-share">⬇️ הורד עמוד שיתוף</button>
+      <p class="hint">העמוד נוצר מהנתונים שבמכשיר שלך ברגע הייצוא. כדי לעדכן את המשפחה — ייצא מחדש ושלח שוב.</p>
+    </div>
+  </section>
+
+</main>
+
+<nav id="bottomnav">
+  <button class="nav-btn active" data-screen="home">🏠<span>בית</span></button>
+  <button class="nav-btn" data-screen="route">🗺️<span>מסלול</span></button>
+  <button class="nav-btn" data-screen="discover">📍<span>גילוי</span></button>
+  <button class="nav-btn" data-screen="stay">🛏️<span>לינה</span></button>
+  <button class="nav-btn" data-screen="journal">📖<span>יומן</span></button>
+  <button class="nav-btn" data-screen="documents">🗂️<span>מסמכים</span></button>
+  <button class="nav-btn" data-screen="share">🔗<span>שיתוף</span></button>
+</nav>
+
+<div id="slideshow" hidden>
+  <button id="slideshow-close" class="slideshow-btn top">✕</button>
+  <div id="slideshow-stage">
+    <img id="slideshow-img" alt="">
+    <div id="slideshow-caption"></div>
+  </div>
+  <div class="slideshow-controls">
+    <button id="slideshow-prev" class="slideshow-btn">▶ הקודם</button>
+    <span id="slideshow-counter"></span>
+    <button id="slideshow-next" class="slideshow-btn">הבא ◀</button>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+
+<script src="js/db.js"></script>
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn('SW registration failed', e); });
+  });
+}
+</script>
+</body>
+</html>
