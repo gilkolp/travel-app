@@ -14,6 +14,7 @@
     currentTripId: Number(localStorage.getItem('ta.currentTripId')) || null,
     author: localStorage.getItem('ta.author') || '',
     discoverTab: 'attractions',
+    discoverSeq: 0,
     pendingTripGeo: null,
     pendingStopGeo: null,
     objectUrls: []
@@ -209,39 +210,86 @@
     }
   }
 
+  /* ---------- השלמת קואורדינטות אוטומטית ----------
+     חלק שנוצר בלי קואורדינטות (למשל החלק הכללי של הטיול) — משלימים לפי שם העיר/המדינה
+     ושומרים חזרה ל־DB, כדי שמזג האוויר והגילוי יעבדו גם עליו. */
+  var coordsAttempted = {}; // stopId -> true : כבר נעשה ניסיון השלמה (הצליח או נכשל) במפגש הזה
+  var coordsInFlight = {};  // stopId -> Promise<boolean>
+  function ensureStopCoords(stop) {
+    if (!stop || stop.lat != null) return Promise.resolve(false);
+    if (coordsAttempted[stop.id]) return Promise.resolve(false);
+    if (coordsInFlight[stop.id]) return coordsInFlight[stop.id];
+    var name = (stop.city || '').trim() || (stop.country || '').trim();
+    if (!name) { coordsAttempted[stop.id] = true; return Promise.resolve(false); }
+    var p = API.geocode(name).then(function (res) {
+      coordsAttempted[stop.id] = true;
+      delete coordsInFlight[stop.id];
+      if (res && res.length) {
+        stop.lat = res[0].lat;
+        stop.lon = res[0].lon;
+        if (res[0].timezone) stop.timezone = res[0].timezone;
+        return DB.put('stops', stop).then(
+          function () { return true; },
+          function () { return true; } // גם אם השמירה נכשלה, בזיכרון יש קואורדינטות
+        );
+      }
+      return false;
+    }).catch(function () {
+      coordsAttempted[stop.id] = true;
+      delete coordsInFlight[stop.id];
+      return false;
+    });
+    coordsInFlight[stop.id] = p;
+    return p;
+  }
+
   /* ---------- מזג אוויר ---------- */
   function weatherRange() {
     var stop = activeStop();
     var today = todayStr();
     if (stop && stop.arrivalDate && stop.departureDate) {
+      if (stop.departureDate < today) {
+        // החלק כבר הסתיים — מציגים תחזית לשבוע הקרוב במיקום החלק
+        return { stop: stop, start: today, end: addDays(today, 6), finished: true };
+      }
       var start = stop.arrivalDate < today ? today : stop.arrivalDate;
-      if (stop.departureDate < today) return { stop: stop, start: null, end: null };
       var end = stop.departureDate;
       // ה־API החינמי מוגבל לכ־16 יום קדימה
       var maxEnd = addDays(today, 15);
       if (end > maxEnd) end = maxEnd;
       if (start > end) start = end;
-      return { stop: stop, start: start, end: end };
+      return { stop: stop, start: start, end: end, finished: false };
     }
-    return { stop: stop, start: today, end: addDays(today, 6) };
+    return { stop: stop, start: today, end: addDays(today, 6), finished: false };
   }
   function renderWeather() {
     var box = $('weather-days');
     var placeEl = $('weather-place');
     var stop = activeStop();
-    if (!stop || stop.lat == null || stop.lon == null) {
+    if (!stop) {
       placeEl.textContent = 'בחר טיול וחלק עם מיקום כדי לראות מזג אוויר.';
       box.innerHTML = '';
       return;
     }
-    var range = weatherRange();
-    if (!range.start) {
-      placeEl.textContent = 'החלק "' + (stop.city || '') + '" כבר הסתיים.';
-      box.innerHTML = '';
+    if (stop.lat == null || stop.lon == null) {
+      if (coordsAttempted[stop.id]) {
+        placeEl.textContent = 'בחר טיול וחלק עם מיקום כדי לראות מזג אוויר.';
+        box.innerHTML = '';
+      } else {
+        placeEl.textContent = 'מאתר את מיקום החלק "' + (stop.city || stop.country || '') + '"…';
+        ensureStopCoords(stop).then(function () { renderAll(); });
+      }
       return;
     }
-    placeEl.textContent = 'מזג אוויר ב' + (stop.city || stop.country || '') +
-      ' · ' + fmtDate(range.start) + ' ← ' + fmtDate(range.end);
+    var range = weatherRange();
+    if (range.finished) {
+      placeEl.textContent = 'החלק "' + (stop.city || stop.country || '') + '" כבר הסתיים — ' +
+        'הנה תחזית לשבוע הקרוב ב' + (stop.city || stop.country || '') +
+        ' · ' + fmtDate(range.start) + ' ← ' + fmtDate(range.end);
+    } else {
+      placeEl.textContent = 'מזג אוויר ב' + (stop.city || stop.country || '') +
+        ' · ' + fmtDate(range.start) + ' ← ' + fmtDate(range.end);
+    }
     box.innerHTML = '<div class="muted">טוען תחזית…</div>';
     API.fetchWeather(stop.lat, stop.lon, range.start, range.end).then(function (days) {
       if (!days.length) { box.innerHTML = '<div class="muted">אין תחזית זמינה לטווח הזה.</div>'; return; }
@@ -302,7 +350,7 @@
     var stop = activeStop();
     $('discover-place').textContent = stop
       ? 'מחפשים סביב החלק הפעיל: ' + (stop.city || stop.country || '') +
-        (stop.lat == null ? ' (לחלק הזה אין קואורדינטות — ערוך אותו במסלול ובחר עיר מהחיפוש)' : '')
+        (stop.lat == null ? ' (לחלק הזה אין עדיין קואורדינטות — הן יושלמו אוטומטית לפי שם העיר)' : '')
       : 'אין חלק פעיל. צור טיול וחלק במסלול, או השתמש ב"מסביבי עכשיו".';
     document.querySelectorAll('#discover-tabs .tab').forEach(function (t) {
       t.classList.toggle('active', t.dataset.tab === state.discoverTab);
@@ -331,14 +379,18 @@
   function runDiscover(lat, lon, sourceLabel) {
     var status = $('discover-status');
     var tab = state.discoverTab;
+    // מונה רצף: תגובה של חיפוש ישן (למשל אטרקציות אטי) לא תדרוס תוצאות של חיפוש חדש יותר
+    var seq = ++state.discoverSeq;
     var fn = tab === 'kosher' ? API.findKosher : (tab === 'chabad' ? API.findChabad : API.findAttractions);
     var label = tab === 'kosher' ? 'מקומות כשרים' : (tab === 'chabad' ? 'בתי חב״ד' : 'אטרקציות');
     status.textContent = 'מחפש ' + label + ' סביב ' + sourceLabel + '…';
     $('discover-results').innerHTML = '';
     fn(lat, lon).then(function (places) {
+      if (seq !== state.discoverSeq) return; // חיפוש חדש יותר כבר רץ — מתעלמים
       status.textContent = 'נמצאו ' + places.length + ' ' + label + ' סביב ' + sourceLabel + ' (מקור: OpenStreetMap).';
       renderPlaces(places, label);
     }).catch(function () {
+      if (seq !== state.discoverSeq) return;
       status.textContent = 'החיפוש נכשל — בדוק חיבור לאינטרנט ונסה שוב.';
     });
   }
@@ -501,13 +553,37 @@
     });
   }
 
+  /* ---------- פס חלקי הטיול (צ'יפים בראש המסך) ---------- */
+  function renderPartsBar() {
+    var bar = $('parts-bar');
+    if (!bar) return;
+    var trip = currentTrip();
+    if (!trip) { bar.hidden = true; bar.innerHTML = ''; return; }
+    var stops = tripStops();
+    var mode = trip.activeStopId == null ? 'auto' : trip.activeStopId;
+    var current = activeStop();
+    var html = '<button type="button" class="part-chip' + (mode === 'auto' ? ' active' : '') +
+      '" data-part="auto">🔄 אוטומטי</button>';
+    html += stops.map(function (s) {
+      var isSelected = mode !== 'auto' && Number(mode) === s.id;
+      var isCurrent = current && current.id === s.id;
+      return '<button type="button" class="part-chip' + (isSelected ? ' active' : '') +
+        '" data-part="' + s.id + '">' + esc(s.city || s.country || 'חלק') +
+        (mode === 'auto' && isCurrent ? ' • עכשיו' : '') + '</button>';
+    }).join('');
+    bar.innerHTML = html;
+    bar.hidden = false;
+  }
+
   /* ---------- רינדור כולל ---------- */
   function renderAll() {
     state.objectUrls.forEach(function (u) { URL.revokeObjectURL(u); });
     state.objectUrls = [];
     renderTopSelectors();
+    renderPartsBar();
     tickClocks();
     renderHome();
+    renderWeather();
     renderRoute();
     renderDiscoverHead();
     renderJournal();
@@ -521,13 +597,14 @@
     });
     document.querySelectorAll('.shortcut').forEach(function (b) {
       b.addEventListener('click', function () {
-        if (b.dataset.tab) state.discoverTab = b.dataset.tab;
+        if (b.dataset.tab) { state.discoverTab = b.dataset.tab; state.discoverSeq++; }
         showScreen(b.dataset.goto);
       });
     });
     document.querySelectorAll('#discover-tabs .tab').forEach(function (t) {
       t.addEventListener('click', function () {
         state.discoverTab = t.dataset.tab;
+        state.discoverSeq++; // מבטל תוצאות של חיפוש שעדיין רץ מהלשונית הקודמת
         renderDiscoverHead();
         $('discover-results').innerHTML = '';
         $('discover-status').textContent = '';
@@ -539,6 +616,14 @@
       if (!trip) return;
       trip.activeStopId = this.value === 'auto' ? 'auto' : Number(this.value);
       DB.put('trips', trip).then(function () { renderAll(); toast('החלק הפעיל עודכן'); });
+    });
+    $('parts-bar').addEventListener('click', function (e) {
+      var chip = e.target.closest('button[data-part]');
+      if (!chip) return;
+      var trip = currentTrip();
+      if (!trip) return;
+      trip.activeStopId = chip.dataset.part === 'auto' ? 'auto' : Number(chip.dataset.part);
+      DB.put('trips', trip).then(function () { loadAll(); });
     });
     $('author-select').addEventListener('change', function () {
       state.author = this.value;
@@ -739,7 +824,20 @@
     $('btn-search-stop').addEventListener('click', function () {
       var stop = activeStop();
       if (!stop) { toast('אין חלק פעיל'); return; }
-      if (stop.lat == null) { toast('לחלק הפעיל אין קואורדינטות — ערוך אותו במסלול'); return; }
+      if (stop.lat == null) {
+        // מנסים להשלים קואורדינטות אוטומטית לפי שם העיר, ואז מחפשים
+        $('discover-status').textContent = 'מאתר את מיקום החלק…';
+        ensureStopCoords(stop).then(function () {
+          renderAll();
+          if (stop.lat != null) {
+            runDiscover(stop.lat, stop.lon, stop.city || stop.country || 'החלק הפעיל');
+          } else {
+            $('discover-status').textContent = '';
+            toast('לחלק הפעיל אין קואורדינטות — ערוך אותו במסלול');
+          }
+        });
+        return;
+      }
       runDiscover(stop.lat, stop.lon, stop.city || stop.country || 'החלק הפעיל');
     });
     $('btn-search-around').addEventListener('click', function () {

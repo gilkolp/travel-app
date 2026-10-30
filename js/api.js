@@ -3,7 +3,10 @@
 (function () {
   'use strict';
 
-  var OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+  var OVERPASS_URLS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+  ];
   var GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search';
   var FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 
@@ -85,15 +88,35 @@
   }
 
   /* ---------- Overpass: מקומות סביב נקודה ---------- */
-  function overpass(query) {
-    return fetch(OVERPASS_URL, {
+  function overpassOnce(url, query) {
+    var controller = ('AbortController' in window) ? new AbortController() : null;
+    var timer = controller
+      ? setTimeout(function () { controller.abort(); }, 60000)
+      : null;
+    return fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-      body: 'data=' + encodeURIComponent(query)
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'Accept': 'application/json'
+      },
+      body: 'data=' + encodeURIComponent(query),
+      signal: controller ? controller.signal : undefined
     }).then(function (r) {
+      if (timer) clearTimeout(timer);
       if (!r.ok) throw new Error('overpass failed: ' + r.status);
       return r.json();
-    }).then(function (data) { return data.elements || []; });
+    }).catch(function (e) {
+      if (timer) clearTimeout(timer);
+      throw e;
+    });
+  }
+  // ניסיון מול כל שרת ברשימה לפי הסדר — אם אחד נכשל או נתקע, עוברים לבא.
+  function overpass(query) {
+    var chain = Promise.reject(new Error('no endpoint tried yet'));
+    OVERPASS_URLS.forEach(function (url) {
+      chain = chain.catch(function () { return overpassOnce(url, query); });
+    });
+    return chain.then(function (data) { return data.elements || []; });
   }
 
   function elementToPlace(el, centerLat, centerLon) {
@@ -101,9 +124,10 @@
     var lon = el.lon != null ? el.lon : (el.center && el.center.lon);
     if (lat == null || lon == null) return null;
     var tags = el.tags || {};
-    if (!tags.name) return null;
+    var nm = tags.name || tags['name:he'] || '';
+    if (!nm) return null;
     return {
-      name: tags.name,
+      name: nm,
       lat: lat,
       lon: lon,
       kind: tags.tourism || tags.amenity || tags.historic || tags.leisure || '',
@@ -129,11 +153,11 @@
   }
 
   function findAttractions(lat, lon) {
-    var q = '[out:json][timeout:25];(' +
-      'nwr["tourism"~"attraction|museum|zoo|theme_park|aquarium|gallery|viewpoint|castle"]["name"](around:6000,' + lat + ',' + lon + ');' +
-      'nwr["historic"]["name"](around:6000,' + lat + ',' + lon + ');' +
-      'nwr["leisure"="park"]["name"](around:6000,' + lat + ',' + lon + ');' +
-      ');out center 120;';
+    var q = '[out:json][timeout:20];(' +
+      'nwr["tourism"~"attraction|museum|zoo|theme_park|aquarium|gallery|viewpoint|castle"]["name"](around:5000,' + lat + ',' + lon + ');' +
+      'nwr["historic"~"castle|monument|memorial|ruins"]["name"](around:5000,' + lat + ',' + lon + ');' +
+      'nwr["leisure"="park"]["name"](around:5000,' + lat + ',' + lon + ');' +
+      ');out center 60;';
     return overpass(q).then(function (els) { return collect(els, lat, lon, 40); });
   }
 
@@ -149,6 +173,7 @@
   function findChabad(lat, lon) {
     var q = '[out:json][timeout:25];(' +
       'nwr["name"~"Chabad|Lubavitch|Habad|חב",i](around:25000,' + lat + ',' + lon + ');' +
+      'nwr["name:he"~"בית חב|חבד|חב״ד"](around:25000,' + lat + ',' + lon + ');' +
       ');out center 60;';
     return overpass(q).then(function (els) {
       return collect(els, lat, lon, 30).filter(function (p) {
