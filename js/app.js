@@ -386,7 +386,13 @@
     var label = tab === 'kosher' ? 'מקומות כשרים' : (tab === 'chabad' ? 'בתי חב״ד' : 'אטרקציות');
     status.textContent = 'מחפש ' + label + ' סביב ' + sourceLabel + '…';
     $('discover-results').innerHTML = '';
-    fn(lat, lon).then(function (places) {
+    fn(lat, lon, function (partial) {
+      if (seq !== state.discoverSeq) return;
+      if (partial && partial.length) {
+        status.textContent = 'נמצאו בינתיים ' + partial.length + ' ' + label + ' סביב ' + sourceLabel + ' — ממשיך לחפש עוד…';
+        renderPlaces(partial, label);
+      }
+    }).then(function (places) {
       if (seq !== state.discoverSeq) return; // חיפוש חדש יותר כבר רץ — מתעלמים
       status.textContent = 'נמצאו ' + places.length + ' ' + label + ' סביב ' + sourceLabel + ' (מקור: OpenStreetMap).';
       renderPlaces(places, label);

@@ -89,10 +89,10 @@
   }
 
   /* ---------- Overpass: מקומות סביב נקודה ---------- */
-  function overpassOnce(url, query) {
+  function overpassOnce(url, query, timeoutMs) {
     var controller = ('AbortController' in window) ? new AbortController() : null;
     var timer = controller
-      ? setTimeout(function () { controller.abort(); }, 75000)
+      ? setTimeout(function () { controller.abort(); }, timeoutMs || 75000)
       : null;
     return fetch(url, {
       method: 'POST',
@@ -155,39 +155,87 @@
     return out.slice(0, limit || 40);
   }
 
-  function findAttractions(lat, lon) {
-    var q = '[out:json][timeout:20];(' +
-      'nwr["tourism"~"attraction|museum|zoo|theme_park|aquarium|gallery|viewpoint|castle"]["name"](around:5000,' + lat + ',' + lon + ');' +
-      'nwr["historic"~"castle|monument|memorial|ruins"]["name"](around:5000,' + lat + ',' + lon + ');' +
-      'nwr["leisure"="park"]["name"](around:5000,' + lat + ',' + lon + ');' +
-      ');out center 60;';
-    return overpass(q).then(function (els) { return collect(els, lat, lon, 40); });
+  /* ---------- Photon: חיפוש טקסט מהיר סביב נקודה (שרתי Overpass עמוסים מדי) ---------- */
+  var PHOTON_URL = 'https://photon.komoot.io/api/';
+  function photonQuery(q, lat, lon) {
+    var url = PHOTON_URL + '?q=' + encodeURIComponent(q) + '&lat=' + lat + '&lon=' + lon + '&limit=40&lang=en';
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('photon failed: ' + r.status);
+      return r.json();
+    }).then(function (data) { return data.features || []; }).catch(function () { return []; });
+  }
+  function photonPlaces(queries, lat, lon, maxKm, keep) {
+    return Promise.all(queries.map(function (q) { return photonQuery(q, lat, lon); })).then(function (lists) {
+      var seen = {}, out = [];
+      lists.forEach(function (feats) {
+        feats.forEach(function (f) {
+          var p = f.properties || {};
+          var c = (f.geometry && f.geometry.coordinates) || [];
+          if (!p.name || c[0] == null) return;
+          var key = p.osm_type + '/' + p.osm_id;
+          if (seen[key]) return;
+          var d = haversineKm(lat, lon, c[1], c[0]);
+          if (d > maxKm) return;
+          var place = {
+            name: p.name, localName: '', searchText: p.name,
+            lat: c[1], lon: c[0],
+            kind: p.osm_value || '',
+            cuisine: '', openingHours: '', website: '',
+            distanceKm: d, osmKey: p.osm_key || ''
+          };
+          if (keep && !keep(place)) return;
+          seen[key] = true;
+          out.push(place);
+        });
+      });
+      out.sort(function (a, b) { return a.distanceKm - b.distanceKm; });
+      return out;
+    });
   }
 
-  function findKosher(lat, lon) {
+  function findAttractions(lat, lon) {
+    var queries = ['tourist attraction', 'museum', 'viewpoint', 'park', 'castle', 'art gallery', 'temple', 'zoo', 'aquarium', 'garden'];
+    return photonPlaces(queries, lat, lon, 6, function (p) {
+      if (p.osmKey === 'tourism') return p.kind !== 'hotel' && p.kind !== 'hostel' && p.kind !== 'apartment' && p.kind !== 'guest_house';
+      if (p.osmKey === 'leisure') return p.kind === 'park' || p.kind === 'garden' || p.kind === 'nature_reserve';
+      if (p.osmKey === 'historic') return true;
+      if (p.osmKey === 'amenity') return p.kind === 'arts_centre' || p.kind === 'theatre' || p.kind === 'place_of_worship' || p.kind === 'marketplace';
+      return false;
+    }).then(function (places) { return places.slice(0, 40); });
+  }
+
+  function findKosher(lat, lon, onPartial) {
+    var photonPart = photonPlaces(['kosher restaurant', 'kosher', 'kosher food', 'כשר'], lat, lon, 9, function (p) {
+      return /kosher|כשר/i.test(p.name);
+    });
+    // השלמה מתגית diet:kosher ב־Overpass — שאילתה זולה אחת, שרת אחד, זמן מוגבל.
     var q = '[out:json][timeout:25];(' +
       'nwr["diet:kosher"="yes"](around:9000,' + lat + ',' + lon + ');' +
       'nwr["kosher"="yes"](around:9000,' + lat + ',' + lon + ');' +
-      'nwr["amenity"~"restaurant|cafe|fast_food|bakery"]["name"~"kosher|כשר",i](around:9000,' + lat + ',' + lon + ');' +
       ');out center 60;';
-    return overpass(q).then(function (els) { return collect(els, lat, lon, 40); });
+    var overpassPart = overpassOnce(OVERPASS_URLS[0], q, 40000)
+      .then(function (data) { return collect(data.elements || [], lat, lon, 40); })
+      .catch(function () { return []; });
+    if (onPartial) {
+      photonPart.then(function (places) { if (places.length) onPartial(places); }).catch(function () {});
+    }
+    return Promise.all([photonPart.catch(function () { return []; }), overpassPart]).then(function (parts) {
+      var seen = {}, out = [];
+      parts[0].concat(parts[1]).forEach(function (p) {
+        var key = p.name + '@' + p.lat.toFixed(4) + ',' + p.lon.toFixed(4);
+        if (seen[key]) return;
+        seen[key] = true;
+        out.push(p);
+      });
+      out.sort(function (a, b) { return a.distanceKm - b.distanceKm; });
+      return out.slice(0, 40);
+    });
   }
 
   function findChabad(lat, lon) {
-    // חיפוש ממוקד לפי סוג מקום + שם — סריקת שם בלבד על רדיוס גדול כבדה מדי לשרת ופגה בזמן.
-    var rx = 'Chabad|Lubavitch|Habad|בית חב|חב״ד|חב"ד';
-    var q = '[out:json][timeout:25];(' +
-      'nwr["amenity"="place_of_worship"]["name"~"' + rx + '",i](around:15000,' + lat + ',' + lon + ');' +
-      'nwr["building"="synagogue"]["name"~"' + rx + '",i](around:15000,' + lat + ',' + lon + ');' +
-      'nwr["amenity"="community_centre"]["name"~"' + rx + '",i](around:15000,' + lat + ',' + lon + ');' +
-      'nwr["name:he"~"בית חב|חבד|חב״ד"](around:15000,' + lat + ',' + lon + ');' +
-      'nwr["operator"~"Chabad|Lubavitch",i](around:15000,' + lat + ',' + lon + ');' +
-      ');out center 60;';
-    return overpass(q).then(function (els) {
-      return collect(els, lat, lon, 30).filter(function (p) {
-        return /chabad|lubavitch|habad|חב/i.test(p.searchText || p.name);
-      });
-    });
+    return photonPlaces(['Chabad', 'Chabad House', 'Lubavitch', 'בית חב״ד', 'בית חבד'], lat, lon, 25, function (p) {
+      return p.osmKey !== 'highway' && /chabad|lubavitch|habad|חב/i.test(p.name);
+    }).then(function (places) { return places.slice(0, 30); });
   }
 
   function mapsLink(p) {
