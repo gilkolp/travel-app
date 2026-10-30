@@ -50,6 +50,21 @@ h3 { font-size: 1rem; margin: 0 0 8px; }
   min-width: 0;
 }
 
+/* ===== פס חלקי הטיול ===== */
+.parts-bar {
+  display: flex; gap: 6px; margin-top: 10px;
+  overflow-x: auto; overflow-y: hidden; padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch; scrollbar-width: thin;
+}
+.parts-bar[hidden] { display: none; }
+.part-chip {
+  flex: 0 0 auto; appearance: none; cursor: pointer; font-family: inherit;
+  border: 1px solid rgba(255,255,255,.55); background: rgba(255,255,255,.14);
+  color: #fff; border-radius: 999px; padding: 6px 12px;
+  font-size: 0.85rem; white-space: nowrap; line-height: 1.35;
+}
+.part-chip.active { background: #fff; color: var(--green-dark); border-color: #fff; font-weight: 700; }
+
 /* ===== מבנה ===== */
 main { max-width: 640px; margin: 0 auto; padding: 12px; }
 .screen { display: none; }
