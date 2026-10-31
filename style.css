@@ -250,3 +250,11 @@ main { max-width: 640px; margin: 0 auto; padding: 12px; }
 .whatsnew-title { font-size: 1.15rem; margin: 0 0 10px; }
 .whatsnew-list { margin: 0 0 4px; padding-inline-start: 20px; line-height: 1.7; }
 .whatsnew-list li { margin-bottom: 6px; }
+
+/* ענן וסנכרון: שדות קוד הסנכרון (לטינית, כיוון LTR) */
+#cloud-card #cloud-status { margin-bottom: 10px; }
+#cloud-token, #cloud-join-code {
+  direction: ltr; text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+}
