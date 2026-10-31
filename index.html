@@ -16,7 +16,7 @@
 <header id="topbar">
   <div class="topbar-brand">
     <span class="brand-name">🧳 הטיולים שלי</span>
-    <span id="app-version-label" class="version-tag">גרסה 1.5</span>
+    <span id="app-version-label" class="version-tag">גרסה 1.6</span>
   </div>
   <div class="clocks">
     <div class="clock">
@@ -328,9 +328,18 @@
 
 <div id="whatsnew-backdrop" hidden></div>
 <div id="whatsnew" hidden role="dialog" aria-modal="true" aria-labelledby="whatsnew-title">
-  <h3 id="whatsnew-title" class="whatsnew-title">🎉 מה חדש בגרסה 1.5</h3>
+  <h3 id="whatsnew-title" class="whatsnew-title">🎉 מה חדש בגרסה 1.6</h3>
   <ul id="whatsnew-list" class="whatsnew-list"></ul>
   <button type="button" id="whatsnew-close" class="btn primary big">הבנתי</button>
+</div>
+
+<div id="nameprompt-backdrop" hidden></div>
+<div id="nameprompt" hidden role="dialog" aria-modal="true" aria-labelledby="nameprompt-title">
+  <h3 id="nameprompt-title" class="whatsnew-title">איך קוראים לך?</h3>
+  <p class="nameprompt-text">השם יופיע אוטומטית ליד העדכונים והיומן שלך — כדי שחברים לטיול ידעו מי כתב מה.</p>
+  <input type="text" id="nameprompt-input" placeholder="השם שלך" autocomplete="name">
+  <p id="nameprompt-hint" class="nameprompt-hint" hidden>כדי להמשיך צריך להזין שם 🙂</p>
+  <button type="button" id="nameprompt-save" class="btn primary big">שמור</button>
 </div>
 
 <div id="toast" hidden></div>

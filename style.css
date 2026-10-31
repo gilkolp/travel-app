@@ -251,6 +251,30 @@ main { max-width: 640px; margin: 0 auto; padding: 12px; }
 .whatsnew-list { margin: 0 0 4px; padding-inline-start: 20px; line-height: 1.7; }
 .whatsnew-list li { margin-bottom: 6px; }
 
+/* ===== חלון בקשת שם חד־פעמית (שדה חובה — נסגר רק בשמירת שם) ===== */
+#nameprompt-backdrop {
+  position: fixed; inset: 0; z-index: 132; background: rgba(10, 22, 17, .5);
+}
+#nameprompt-backdrop[hidden] { display: none; }
+#nameprompt {
+  position: fixed; right: 0; left: 0; bottom: 0; z-index: 133;
+  max-width: 640px; margin: 0 auto;
+  background: #fff; color: var(--text);
+  border-radius: 18px 18px 0 0;
+  max-height: 80vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 20px 18px calc(18px + env(safe-area-inset-bottom));
+  box-shadow: 0 -6px 24px rgba(0,0,0,.28);
+}
+#nameprompt[hidden] { display: none; }
+.nameprompt-text { margin: 0 0 12px; line-height: 1.6; color: var(--muted); }
+#nameprompt input[type="text"] {
+  width: 100%; padding: 10px; border: 1px solid var(--border);
+  border-radius: 9px; font-size: 1rem; background: #fff; color: var(--text);
+  font-family: inherit;
+}
+.nameprompt-hint { color: var(--danger); font-size: 0.9rem; margin: 8px 0 0; }
+.nameprompt-hint[hidden] { display: none; }
+
 /* ענן וסנכרון: שדות קוד הסנכרון (לטינית, כיוון LTR) */
 #cloud-card #cloud-status { margin-bottom: 10px; }
 #cloud-token, #cloud-join-code {
