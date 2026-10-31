@@ -286,8 +286,8 @@
     var key = cacheKey('chabad', lat, lon);
     var hit = cacheGet(key);
     if (hit) return Promise.resolve(hit);
-    return photonPlaces(['Chabad', 'Chabad House', 'Lubavitch', 'בית חב״ד', 'בית חבד'], lat, lon, 25, function (p) {
-      return p.osmKey !== 'highway' && /chabad|lubavitch|habad|חב/i.test(p.name);
+    return photonPlaces(['Chabad', 'Chabad House', 'Lubavitch', 'Lubawitsch', 'Chabad Lubawitsch', 'בית חב״ד', 'בית חבד'], lat, lon, 25, function (p) {
+      return p.osmKey !== 'highway' && /chabad|lubavitch|lubawitsch|habad|חב/i.test(p.name);
     }).then(function (places) {
       var out = places.slice(0, 30);
       cacheSet(key, out);

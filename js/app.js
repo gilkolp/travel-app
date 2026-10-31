@@ -7,8 +7,16 @@
   var $ = function (id) { return document.getElementById(id); };
 
   /* ---------- גרסת האפליקציה ורשימת השינויים ---------- */
-  var APP_VERSION = '1.1';
+  var APP_VERSION = '1.3';
   var CHANGELOG = {
+    '1.3': [
+      'חיפוש חב״ד משופר — כולל איותים מקומיים וקישור לחיפוש ב־Google Maps כשאין תוצאות במפה',
+      'במצב שאין מקומות כשרים — גם קישור לחיפוש כשר ב־Google Maps'
+    ],
+    '1.2': [
+      'אי אפשר יותר לבחור תאריך סיום לפני תאריך ההתחלה',
+      'כשאין מקומות כשרים באזור — האפליקציה מפנה לבית חב״ד הקרוב'
+    ],
     '1.1': [
       'חיפוש מקומות כשרים חוזק — יותר תוצאות וטעינה מהירה יותר',
       'בכל אטרקציה: כפתור "הסבר ופרטים" עם מידע ותמונה',
@@ -63,6 +71,46 @@
         .format(new Date(dateStr + 'T12:00:00'));
     } catch (e) { return dateStr; }
   }
+  /* ---------- קישור תאריכי טווח (התחלה ↔ סיום) ----------
+     בכל זוג שדות תאריך של טווח: הסיום לא יכול להיות לפני ההתחלה.
+     בחירת התחלה מעדכנת את min של הסיום (ומתקנת ערך סיום סותר להתחלה),
+     ובחירת סיום מעדכנת את max של ההתחלה (ומתקנת ערך התחלה סותר לסיום). */
+  function linkDateRange(startEl, endEl) {
+    function syncFromStart() {
+      var s = startEl.value;
+      if (s) {
+        endEl.min = s;
+        if (endEl.value && endEl.value < s) endEl.value = s;
+      } else {
+        endEl.removeAttribute('min');
+      }
+      if (endEl.value) startEl.max = endEl.value;
+      else startEl.removeAttribute('max');
+    }
+    function syncFromEnd() {
+      var e = endEl.value;
+      if (e) {
+        startEl.max = e;
+        if (startEl.value && startEl.value > e) startEl.value = e;
+      } else {
+        startEl.removeAttribute('max');
+      }
+      if (startEl.value) endEl.min = startEl.value;
+      else endEl.removeAttribute('min');
+    }
+    function syncAll() { syncFromStart(); syncFromEnd(); }
+    ['change', 'input'].forEach(function (ev) {
+      startEl.addEventListener(ev, syncFromStart);
+      endEl.addEventListener(ev, syncFromEnd);
+    });
+    syncAll(); // יישום מיידי על ערכים קיימים (למשל בפתיחת טופס עריכה)
+    return syncAll;
+  }
+  // רשת ביטחון לפני שמירה: הטווח תקין אם אחד הצדדים ריק או שהסיום לא לפני ההתחלה
+  function dateRangeValid(start, end) {
+    return !start || !end || end >= start;
+  }
+
   function toast(msg) {
     var t = $('toast');
     t.textContent = msg;
@@ -467,6 +515,61 @@
       if (p) showPlaceDetails(p);
     };
   }
+  /* ---------- רשת ביטחון: חיפוש ב־Google Maps (כשנתוני המפה חסרים) ---------- */
+  function mapsSearchUrl(query, lat, lon) {
+    return 'https://www.google.com/maps/search/' + encodeURIComponent(query) +
+      '/@' + lat + ',' + lon + ',13z';
+  }
+  // בלשונית חב״ד: כפתור קבוע מעל התוצאות לחיפוש ב־Google Maps סביב אותה נקודה.
+  function updateDiscoverExtraActions(lat, lon) {
+    var box = $('discover-extra-actions');
+    if (!box) return;
+    if (state.discoverTab !== 'chabad' || lat == null || lon == null) {
+      box.hidden = true;
+      box.innerHTML = '';
+      return;
+    }
+    box.innerHTML = '<a class="btn" target="_blank" rel="noopener" href="' +
+      mapsSearchUrl('Chabad', lat, lon) + '">🔯 חיפוש בתי חב״ד ב־Google Maps</a>';
+    box.hidden = false;
+  }
+  /* מצב ריק בלשונית חב״ד: לא כל בתי חב״ד רשומים במאגר המפה — מפנים ל־Google Maps */
+  function renderChabadEmpty(lat, lon) {
+    var box = $('discover-results');
+    box.innerHTML =
+      '<div class="empty">בית חב״ד לא נמצא במאגר המפה באזור הזה — לא תמיד כולם רשומים שם. ' +
+      'נסו את החיפוש ב־Google Maps:' +
+      '<div class="item-actions">' +
+      '<a class="btn" target="_blank" rel="noopener" href="' + mapsSearchUrl('Chabad', lat, lon) + '">🔯 חיפוש בתי חב״ד ב־Google Maps</a>' +
+      '</div></div>';
+  }
+
+  /* ---------- מעבר בין לשוניות הגילוי ---------- */
+  function switchDiscoverTab(tab) {
+    state.discoverTab = tab;
+    state.discoverSeq++; // מבטל תוצאות של חיפוש שעדיין רץ מהלשונית הקודמת
+    renderDiscoverHead();
+    $('discover-results').innerHTML = '';
+    $('discover-status').textContent = '';
+    var st = activeStop();
+    updateDiscoverExtraActions(st ? st.lat : null, st ? st.lon : null);
+  }
+  /* מצב ריק בלשונית הכשרות: אין מקומות כשרים מתויגים — מפנים לבית חב״ד הקרוב */
+  function renderKosherEmpty(lat, lon, sourceLabel) {
+    var box = $('discover-results');
+    box.innerHTML =
+      '<div class="empty">לא נמצאו מקומות כשרים מתויגים באזור הזה. ' +
+      'בחו״ל, הכתובת המעשית לאוכל כשר היא בדרך כלל בית חב״ד הקרוב.' +
+      '<div class="item-actions">' +
+      '<button type="button" class="btn" id="btn-kosher-to-chabad">🔯 מצא בית חב״ד באזור</button>' +
+      '<a class="btn" target="_blank" rel="noopener" href="' + mapsSearchUrl('Kosher', lat, lon) + '">🗺️ חיפוש כשר ב־Google Maps</a>' +
+      '</div></div>';
+    $('btn-kosher-to-chabad').addEventListener('click', function () {
+      switchDiscoverTab('chabad');
+      runDiscover(lat, lon, sourceLabel);
+    });
+  }
+
   function runDiscover(lat, lon, sourceLabel) {
     var status = $('discover-status');
     var tab = state.discoverTab;
@@ -476,6 +579,7 @@
     var label = tab === 'kosher' ? 'מקומות כשרים' : (tab === 'chabad' ? 'בתי חב״ד' : 'אטרקציות');
     status.textContent = 'מחפש ' + label + ' סביב ' + sourceLabel + '…';
     $('discover-results').innerHTML = '';
+    updateDiscoverExtraActions(lat, lon);
     fn(lat, lon, function (partial) {
       if (seq !== state.discoverSeq) return;
       if (partial && partial.length) {
@@ -485,6 +589,8 @@
     }).then(function (places) {
       if (seq !== state.discoverSeq) return; // חיפוש חדש יותר כבר רץ — מתעלמים
       status.textContent = 'נמצאו ' + places.length + ' ' + label + ' סביב ' + sourceLabel + ' (מקור: OpenStreetMap).';
+      if (tab === 'kosher' && !places.length) { renderKosherEmpty(lat, lon, sourceLabel); return; }
+      if (tab === 'chabad' && !places.length) { renderChabadEmpty(lat, lon); return; }
       renderPlaces(places, label);
     }).catch(function () {
       if (seq !== state.discoverSeq) return;
@@ -853,18 +959,12 @@
     });
     document.querySelectorAll('.shortcut').forEach(function (b) {
       b.addEventListener('click', function () {
-        if (b.dataset.tab) { state.discoverTab = b.dataset.tab; state.discoverSeq++; }
+        if (b.dataset.tab) switchDiscoverTab(b.dataset.tab);
         showScreen(b.dataset.goto);
       });
     });
     document.querySelectorAll('#discover-tabs .tab').forEach(function (t) {
-      t.addEventListener('click', function () {
-        state.discoverTab = t.dataset.tab;
-        state.discoverSeq++; // מבטל תוצאות של חיפוש שעדיין רץ מהלשונית הקודמת
-        renderDiscoverHead();
-        $('discover-results').innerHTML = '';
-        $('discover-status').textContent = '';
-      });
+      t.addEventListener('click', function () { switchDiscoverTab(t.dataset.tab); });
     });
 
     $('active-stop-select').addEventListener('change', function () {
@@ -891,8 +991,13 @@
       loadAll();
     });
 
+    /* קישור תאריכי טווח (התחלה ↔ סיום) בכל טפסי הטווח */
+    var syncTripDates = linkDateRange($('trip-start'), $('trip-end'));
+    var syncStopDates = linkDateRange($('stop-arrival'), $('stop-departure'));
+
     /* טיול חדש */
     $('btn-new-trip').addEventListener('click', function () {
+      syncTripDates(); // מרענן min/max לפי הערכים הנוכחיים (ומנקה שאריות מניסיון קודם)
       $('trip-form').hidden = false;
     });
     $('trip-form-cancel').addEventListener('click', function () { $('trip-form').hidden = true; });
@@ -917,6 +1022,10 @@
     });
     $('trip-form').addEventListener('submit', function (e) {
       e.preventDefault();
+      if (!dateRangeValid($('trip-start').value, $('trip-end').value)) {
+        toast('תאריך הסיום חייב להיות ביום ההתחלה או אחריו');
+        return;
+      }
       var country = $('trip-country').value.trim();
       var trip = {
         name: $('trip-name').value.trim(),
@@ -974,6 +1083,7 @@
     $('btn-new-stop').addEventListener('click', function () {
       if (!currentTrip()) { toast('צור קודם טיול'); return; }
       $('stop-form').reset();
+      syncStopDates(); // מנקה min/max שאולי נשארו מעריכה קודמת
       $('stop-id').value = '';
       state.pendingStopGeo = null;
       $('stop-geo-info').textContent = '';
@@ -1008,6 +1118,10 @@
       e.preventDefault();
       var trip = currentTrip();
       if (!trip) return;
+      if (!dateRangeValid($('stop-arrival').value, $('stop-departure').value)) {
+        toast('תאריך הסיום חייב להיות ביום ההתחלה או אחריו');
+        return;
+      }
       var idVal = $('stop-id').value;
       var stop = {
         tripId: trip.id,
@@ -1043,6 +1157,7 @@
         $('stop-country').value = stop.country || '';
         $('stop-arrival').value = stop.arrivalDate || '';
         $('stop-departure').value = stop.departureDate || '';
+        syncStopDates(); // מחיל min/max נכונים מיד לפי הערכים הקיימים של החלק
         $('stop-lat').value = stop.lat == null ? '' : stop.lat;
         $('stop-lon').value = stop.lon == null ? '' : stop.lon;
         $('stop-tz').value = stop.timezone || '';
