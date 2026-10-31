@@ -7,8 +7,11 @@
   var $ = function (id) { return document.getElementById(id); };
 
   /* ---------- גרסת האפליקציה ורשימת השינויים ---------- */
-  var APP_VERSION = '1.6';
+  var APP_VERSION = '1.7';
   var CHANGELOG = {
+    '1.7': [
+      'השם הוא חובה קבועה: אפשר לשנות אותו, אבל לא למחוק'
+    ],
     '1.6': [
       'בהפעלה הראשונה האפליקציה מבקשת את שמך — כדי שכל עדכון ייחתם אוטומטית'
     ],
@@ -945,17 +948,15 @@
     return true;
   }
 
-  /* ---------- בקשת שם חד־פעמית (שדה חובה) ----------
-     אם לא הוגדר שם למכשיר — מבקשים פעם אחת (אחרי "מה חדש" אם הופיע).
-     אין דילוג ואין סגירה מהרקע: החלון יורד רק בשמירת שם לא ריק, ואז לא חוזר. */
+  /* ---------- בקשת שם (שדה חובה קבוע) ----------
+     אם לא הוגדר שם למכשיר — מבקשים אותו (אחרי "מה חדש" אם הופיע).
+     ההחלטה מבוססת על השם בלבד: שם ריק בפתיחה → החלון מופיע, גם אם
+     הוגדר שם בעבר ונמחק. אין דילוג ואין סגירה מהרקע: החלון יורד רק
+     בשמירת שם לא ריק. */
   function namePromptNeeded() {
     var name = '';
-    var prompted = null;
-    try {
-      name = (localStorage.getItem('ta_display_name') || '').trim();
-      prompted = localStorage.getItem('ta_name_prompted');
-    } catch (e) {}
-    return !name && !prompted;
+    try { name = (localStorage.getItem('ta_display_name') || '').trim(); } catch (e) {}
+    return !name;
   }
   function showNamePrompt() {
     $('nameprompt').hidden = false;
@@ -1569,9 +1570,15 @@
     var cloudNameSave = $('cloud-name-save');
     if (cloudNameSave) cloudNameSave.addEventListener('click', function () {
       var name = ($('cloud-display-name').value || '').trim();
-      if (name) lsSet('ta_display_name', name); else lsDel('ta_display_name');
+      if (!name) {
+        // שם הוא חובה קבועה: דוחים מחיקה — השם הקודם נשאר והשדה מוחזר אליו
+        $('cloud-display-name').value = getDisplayName();
+        toast('חייב להיות שם — אפשר לשנות אותו, אבל לא למחוק');
+        return;
+      }
+      lsSet('ta_display_name', name);
       state.author = name; // החתימה האוטומטית על עדכונים מעכשיו
-      toast(name ? 'השם נשמר — יופיע אוטומטית ליד העדכונים שלך' : 'השם נוקה');
+      toast('השם נשמר — יופיע אוטומטית ליד העדכונים שלך');
     });
     var cloudJoinBtn = $('cloud-join-btn');
     if (cloudJoinBtn) cloudJoinBtn.addEventListener('click', function () {
