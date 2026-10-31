@@ -38,13 +38,29 @@
     });
   }
 
+  /* ---------- וו התראה על כתיבה (לסנכרון ענן) ----------
+     כל כתיבה מוצלחת (add/put/remove/clear/bulkPut) מדווחת למאזין אחד.
+     בזמן החלפת נתונים מרוכזת (למשל יישום צילום מהענן) אפשר להשתיק את
+     ההתראות עם setSuppressNotify כדי לא ליצור לולאת סנכרון. */
+  var writeListener = null;
+  var suppressNotify = false;
+  function setWriteListener(fn) { writeListener = (typeof fn === 'function') ? fn : null; }
+  function setSuppressNotify(v) { suppressNotify = !!v; }
+  function notifyWrite() {
+    if (suppressNotify || !writeListener) return;
+    try { writeListener(); } catch (e) { /* התראה לא שוברת כתיבה */ }
+  }
+
   function run(storeName, mode, fn) {
     return openDB().then(function (db) {
       return new Promise(function (resolve, reject) {
         var tx = db.transaction(storeName, mode);
         var store = tx.objectStore(storeName);
         var request = fn(store);
-        tx.oncomplete = function () { resolve(request ? request.result : undefined); };
+        tx.oncomplete = function () {
+          if (mode === 'readwrite') notifyWrite();
+          resolve(request ? request.result : undefined);
+        };
         tx.onerror = function () { reject(tx.error); };
         tx.onabort = function () { reject(tx.error); };
       });
@@ -66,6 +82,22 @@
   function remove(store, id) {
     return run(store, 'readwrite', function (s) { return s.delete(id); });
   }
+  function clear(store) {
+    return run(store, 'readwrite', function (s) { return s.clear(); });
+  }
+  /* כתיבת מערך רשומות בעסקה אחת (עם המזהים הקיימים שלהן, אם יש). */
+  function bulkPut(store, rows) {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(store, 'readwrite');
+        var s = tx.objectStore(store);
+        (rows || []).forEach(function (row) { s.put(row); });
+        tx.oncomplete = function () { notifyWrite(); resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+        tx.onabort = function () { reject(tx.error); };
+      });
+    });
+  }
   function byIndex(store, indexName, key) {
     return openDB().then(function (db) {
       return new Promise(function (resolve, reject) {
@@ -85,6 +117,10 @@
     get: get,
     getAll: getAll,
     remove: remove,
-    byIndex: byIndex
+    clear: clear,
+    bulkPut: bulkPut,
+    byIndex: byIndex,
+    setWriteListener: setWriteListener,
+    setSuppressNotify: setSuppressNotify
   };
 })();

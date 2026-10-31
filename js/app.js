@@ -7,8 +7,12 @@
   var $ = function (id) { return document.getElementById(id); };
 
   /* ---------- גרסת האפליקציה ורשימת השינויים ---------- */
-  var APP_VERSION = '1.3';
+  var APP_VERSION = '1.4';
   var CHANGELOG = {
+    '1.4': [
+      'הטיולים נשמרים עכשיו גם בענן ומסונכרנים בין המכשירים שלך',
+      'קוד סנכרון אישי בהגדרות — לחיבור טלפון או מחשב נוסף'
+    ],
     '1.3': [
       'חיפוש חב״ד משופר — כולל איותים מקומיים וקישור לחיפוש ב־Google Maps כשאין תוצאות במפה',
       'במצב שאין מקומות כשרים — גם קישור לחיפוש כשר ב־Google Maps'
@@ -937,6 +941,149 @@
     showWhatsNew();
   }
 
+  /* ---------- ענן וסנכרון (Supabase) ----------
+     כל כתיבה ל־DB מסומנת "מלוכלך" דרך DB.setWriteListener ומדביקה דחיפה
+     מושהית לענן. כשל ענן לעולם לא מפריע לעבודה המקומית. */
+  var cloudOnline = null; // null = טרם נבדק, true/false אחרי ניסיון ראשון
+  var cloudPushTimer = null;
+  function lsGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+  function lsSet(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
+  function lsDel(key) { try { localStorage.removeItem(key); } catch (e) {} }
+
+  function renderCloudStatus() {
+    var el = $('cloud-status');
+    if (!el) return;
+    var stamp = lsGet('ta_cloud_updated_at') || '';
+    var when = '';
+    if (stamp) {
+      try {
+        when = new Intl.DateTimeFormat('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })
+          .format(new Date(stamp));
+      } catch (e) {}
+    }
+    var suffix = when ? ' · סנכרון אחרון: ' + when : '';
+    if (cloudOnline === false) el.textContent = 'ענן: לא זמין כרגע — הנתונים נשמרים במכשיר בלבד.' + suffix;
+    else if (cloudOnline === true) el.textContent = 'ענן: מחובר ✓' + suffix;
+    else el.textContent = 'ענן: בודק חיבור…' + suffix;
+  }
+
+  function pushToCloudNow() {
+    if (!window.Cloud) return Promise.resolve(false);
+    return Cloud.collectSnapshot().then(function (snap) {
+      if (!snap) { cloudOnline = false; renderCloudStatus(); return false; }
+      return Cloud.push(snap).then(function (stamp) {
+        if (stamp) {
+          cloudOnline = true;
+          lsSet('ta_cloud_updated_at', stamp);
+          lsDel('ta_cloud_dirty');
+        } else {
+          cloudOnline = false;
+        }
+        renderCloudStatus();
+        return !!stamp;
+      });
+    }).catch(function () {
+      cloudOnline = false;
+      renderCloudStatus();
+      return false;
+    });
+  }
+
+  function markCloudDirty() {
+    lsSet('ta_cloud_dirty', '1');
+    if (cloudPushTimer) clearTimeout(cloudPushTimer);
+    cloudPushTimer = setTimeout(function () {
+      cloudPushTimer = null;
+      pushToCloudNow();
+    }, 2500);
+  }
+
+  /* סנכרון פתיחה: נקרא פעם אחת אחרי הטעינה המקומית הראשונה. */
+  function initCloudSync() {
+    renderCloudStatus();
+    if (!window.Cloud) { cloudOnline = false; renderCloudStatus(); return; }
+    var tokenInput = $('cloud-token');
+    if (tokenInput) tokenInput.value = Cloud.getToken();
+    Cloud.pull().then(function (res) {
+      if (res === false) { // אין חיבור/הענן לא זמין — ממשיכים מקומית בשקט
+        cloudOnline = false;
+        renderCloudStatus();
+        return;
+      }
+      cloudOnline = true;
+      var dirty = lsGet('ta_cloud_dirty') === '1';
+      var stamp = lsGet('ta_cloud_updated_at') || '';
+      if (res && !hasAnySavedData()) {
+        // אין שום נתונים מקומיים אבל יש בענן — טוענים אותם (למשל מכשיר חדש)
+        Cloud.applySnapshot(res.data).then(function (ok) {
+          if (ok) {
+            lsSet('ta_cloud_updated_at', res.updated_at);
+            renderCloudStatus();
+            loadAll().then(function () { toast('הנתונים נטענו מהענן ☁️'); });
+          } else {
+            renderCloudStatus();
+          }
+        });
+        return;
+      }
+      var remoteMs = res ? Date.parse(res.updated_at) : 0;
+      var localMs = stamp ? Date.parse(stamp) : 0;
+      if (res && !dirty && remoteMs > localMs + 1000) {
+        // הענן חדש מהעותק המקומי ואין שינויים מקומיים תלויים — מחילים בשקט
+        Cloud.applySnapshot(res.data).then(function (ok) {
+          if (ok) {
+            lsSet('ta_cloud_updated_at', res.updated_at);
+            renderCloudStatus();
+            loadAll();
+          } else {
+            renderCloudStatus();
+          }
+        });
+        return;
+      }
+      // אחרת: המקומי הוא המקור — דוחפים אותו לענן (מושהה מעט)
+      renderCloudStatus();
+      setTimeout(function () { pushToCloudNow(); }, 1500);
+    }).catch(function () {
+      cloudOnline = false;
+      renderCloudStatus();
+    });
+  }
+
+  /* חיבור המכשיר לקוד סנכרון של מכשיר אחר */
+  function joinCloudDevice(code, joinBtn) {
+    joinBtn.disabled = true;
+    Cloud.pull(code).then(function (res) {
+      joinBtn.disabled = false;
+      if (res === false) { toast('לא ניתן להתחבר לענן כרגע — נסה שוב מאוחר יותר'); return; }
+      if (res) {
+        if (!confirm('נמצאו נתונים תחת הקוד שהוזן.\nהנתונים המקומיים במכשיר הזה יוחלפו בנתונים של הקוד. להמשיך?')) return;
+        Cloud.applySnapshot(res.data).then(function (ok) {
+          if (!ok) { toast('החיבור נכשל — הנתונים המקומיים לא שונו'); return; }
+          Cloud.setToken(code);
+          lsSet('ta_cloud_updated_at', res.updated_at);
+          lsDel('ta_cloud_dirty');
+          cloudOnline = true;
+          var ti = $('cloud-token'); if (ti) ti.value = code;
+          $('cloud-join-code').value = '';
+          renderCloudStatus();
+          loadAll().then(function () { toast('המכשיר חובר — הנתונים נטענו מהענן ☁️'); });
+        });
+      } else {
+        if (!confirm('לא נמצאו נתונים תחת הקוד הזה.\nלדחוף את הנתונים הנוכחיים של המכשיר הזה אל הקוד החדש?')) return;
+        Cloud.setToken(code);
+        lsDel('ta_cloud_updated_at');
+        var ti2 = $('cloud-token'); if (ti2) ti2.value = code;
+        pushToCloudNow().then(function (ok) {
+          toast(ok ? 'המכשיר חובר — הנתונים הועלו לענן ☁️' : 'ההעלאה לענן נכשלה — נסה שוב');
+        });
+      }
+    }).catch(function () {
+      joinBtn.disabled = false;
+      toast('לא ניתן להתחבר לענן כרגע — נסה שוב מאוחר יותר');
+    });
+  }
+
   /* ---------- רינדור כולל ---------- */
   function renderAll() {
     state.objectUrls.forEach(function (u) { URL.revokeObjectURL(u); });
@@ -1319,6 +1466,29 @@
 
     /* שיתוף */
     $('btn-export-share').addEventListener('click', exportSharePage);
+
+    /* ענן וסנכרון */
+    var cloudCopyBtn = $('cloud-copy-btn');
+    if (cloudCopyBtn) cloudCopyBtn.addEventListener('click', function () {
+      if (!window.Cloud) { toast('הענן לא זמין כרגע'); return; }
+      var token = Cloud.getToken();
+      function done() { toast('קוד הסנכרון הועתק'); }
+      function fallback() {
+        var inp = $('cloud-token');
+        if (inp) { inp.focus(); inp.select(); try { document.execCommand('copy'); } catch (e) {} }
+        done();
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(token).then(done, fallback);
+      } else fallback();
+    });
+    var cloudJoinBtn = $('cloud-join-btn');
+    if (cloudJoinBtn) cloudJoinBtn.addEventListener('click', function () {
+      if (!window.Cloud) { toast('הענן לא זמין כרגע'); return; }
+      var code = $('cloud-join-code').value.trim();
+      if (!code || code === Cloud.getToken()) { toast('הזן קוד סנכרון של מכשיר אחר'); return; }
+      joinCloudDevice(code, cloudJoinBtn);
+    });
   }
 
   /* ---------- אתחול ---------- */
@@ -1326,7 +1496,13 @@
     bindEvents();
     var versionLabel = $('app-version-label');
     if (versionLabel) versionLabel.textContent = 'גרסה ' + APP_VERSION;
-    loadAll().then(function () { maybeShowWhatsNew(); });
+    // כל כתיבה ל־DB מסמנת "מלוכלך" ומתזמנת דחיפת סנכרון לענן
+    if (window.DB && DB.setWriteListener) DB.setWriteListener(markCloudDirty);
+    renderCloudStatus();
+    loadAll().then(function () {
+      maybeShowWhatsNew();
+      initCloudSync();
+    });
     tickClocks();
     setInterval(tickClocks, 1000);
   });
