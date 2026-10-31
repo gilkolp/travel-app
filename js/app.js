@@ -5,6 +5,18 @@
   'use strict';
 
   var $ = function (id) { return document.getElementById(id); };
+
+  /* ---------- גרסת האפליקציה ורשימת השינויים ---------- */
+  var APP_VERSION = '1.1';
+  var CHANGELOG = {
+    '1.1': [
+      'חיפוש מקומות כשרים חוזק — יותר תוצאות וטעינה מהירה יותר',
+      'בכל אטרקציה: כפתור "הסבר ופרטים" עם מידע ותמונה',
+      'לינה: רשימת מקומות סביב החלק הפעיל, כפתור מחירי גוגל, ומחירי מלונות חיים',
+      'מזג האוויר צמוד עכשיו לתאריכים של החלק הפעיל'
+    ]
+  };
+
   var state = {
     trips: [],
     stops: [],
@@ -787,6 +799,38 @@
     bar.hidden = false;
   }
 
+  /* ---------- חלון "מה חדש בגרסה" ---------- */
+  function hasAnySavedData() {
+    return state.trips.length > 0 || state.stops.length > 0 || state.members.length > 0 ||
+      state.journal.length > 0 || state.documents.length > 0;
+  }
+  function rememberSeenVersion() {
+    try { localStorage.setItem('ta_seen_version', APP_VERSION); } catch (e) {}
+  }
+  function closeWhatsNew() {
+    $('whatsnew').hidden = true;
+    $('whatsnew-backdrop').hidden = true;
+    rememberSeenVersion();
+  }
+  function showWhatsNew() {
+    var items = CHANGELOG[APP_VERSION] || [];
+    $('whatsnew-title').textContent = '🎉 מה חדש בגרסה ' + APP_VERSION;
+    $('whatsnew-list').innerHTML = items.map(function (t) {
+      return '<li>' + esc(t) + '</li>';
+    }).join('');
+    $('whatsnew').hidden = false;
+    $('whatsnew-backdrop').hidden = false;
+  }
+  // נקרא אחרי הטעינה הראשונית: מציג את החלון רק למי שכבר השתמש בגרסה קודמת.
+  // משתמש חדש לגמרי (אין גרסה שמורה ואין שום נתונים) — הגרסה נשמרת בשקט, בלי חלון.
+  function maybeShowWhatsNew() {
+    var seen = null;
+    try { seen = localStorage.getItem('ta_seen_version'); } catch (e) {}
+    if (seen === APP_VERSION) return;
+    if (seen == null && !hasAnySavedData()) { rememberSeenVersion(); return; }
+    showWhatsNew();
+  }
+
   /* ---------- רינדור כולל ---------- */
   function renderAll() {
     state.objectUrls.forEach(function (u) { URL.revokeObjectURL(u); });
@@ -1068,6 +1112,10 @@
     $('place-sheet-close').addEventListener('click', closePlaceSheet);
     $('place-sheet-backdrop').addEventListener('click', closePlaceSheet);
 
+    /* חלון "מה חדש בגרסה" */
+    $('whatsnew-close').addEventListener('click', closeWhatsNew);
+    $('whatsnew-backdrop').addEventListener('click', closeWhatsNew);
+
     /* לינה */
     $('btn-search-stays').addEventListener('click', runStaySearch);
 
@@ -1161,7 +1209,9 @@
   /* ---------- אתחול ---------- */
   document.addEventListener('DOMContentLoaded', function () {
     bindEvents();
-    loadAll();
+    var versionLabel = $('app-version-label');
+    if (versionLabel) versionLabel.textContent = 'גרסה ' + APP_VERSION;
+    loadAll().then(function () { maybeShowWhatsNew(); });
     tickClocks();
     setInterval(tickClocks, 1000);
   });
