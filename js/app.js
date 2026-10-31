@@ -7,8 +7,12 @@
   var $ = function (id) { return document.getElementById(id); };
 
   /* ---------- גרסת האפליקציה ורשימת השינויים ---------- */
-  var APP_VERSION = '1.4';
+  var APP_VERSION = '1.5';
   var CHANGELOG = {
+    '1.5': [
+      'קוד הסנכרון מוסתר מעכשיו — מעתיקים אותו בלחיצה, בלי שהוא גלוי על המסך',
+      'השם שלך נחתם אוטומטית על עדכונים — לא צריך יותר למלא מי עדכן'
+    ],
     '1.4': [
       'הטיולים נשמרים עכשיו גם בענן ומסונכרנים בין המכשירים שלך',
       'קוד סנכרון אישי בהגדרות — לחיבור טלפון או מחשב נוסף'
@@ -36,7 +40,8 @@
     journal: [],
     documents: [],
     currentTripId: Number(localStorage.getItem('ta.currentTripId')) || null,
-    author: localStorage.getItem('ta.author') || '',
+    // שם החתימה האוטומטי: שם המכשיר שהוגדר בכרטיס הענן (ta_display_name)
+    author: (localStorage.getItem('ta_display_name') || '').trim(),
     discoverTab: 'attractions',
     discoverSeq: 0,
     pendingTripGeo: null,
@@ -244,13 +249,6 @@
     }
     stopSel.innerHTML = html;
     stopSel.value = trip && trip.activeStopId != null ? String(trip.activeStopId) : 'auto';
-
-    var authorSel = $('author-select');
-    var names = state.members.map(function (m) { return m.name; });
-    if (state.author && names.indexOf(state.author) === -1) names.unshift(state.author);
-    authorSel.innerHTML = '<option value="">— בחר מעדכן —</option>' +
-      names.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join('');
-    authorSel.value = state.author || '';
   }
 
   /* ---------- רינדור: בית ---------- */
@@ -950,6 +948,24 @@
   function lsSet(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
   function lsDel(key) { try { localStorage.removeItem(key); } catch (e) {} }
 
+  /* שם התצוגה של המכשיר — נחתם אוטומטית על כל עדכון (יומן, חלק, מסמך) */
+  function getDisplayName() { return (lsGet('ta_display_name') || '').trim(); }
+
+  /* קוד הסנכרון מוצג מוסווה (רק 4 תווים אחרונים); ההעתקה תמיד של הקוד המלא */
+  var cloudTokenRevealed = false;
+  function maskToken(t) {
+    t = String(t || '');
+    return t.length > 4 ? '••••••••••••' + t.slice(-4) : '••••';
+  }
+  function renderCloudToken() {
+    var inp = $('cloud-token');
+    if (!inp || !window.Cloud) return;
+    var t = Cloud.getToken();
+    inp.value = cloudTokenRevealed ? t : maskToken(t);
+    var tg = $('cloud-token-toggle');
+    if (tg) tg.textContent = cloudTokenRevealed ? '🙈 הסתר קוד' : '👁️ הצג קוד';
+  }
+
   function renderCloudStatus() {
     var el = $('cloud-status');
     if (!el) return;
@@ -1002,8 +1018,7 @@
   function initCloudSync() {
     renderCloudStatus();
     if (!window.Cloud) { cloudOnline = false; renderCloudStatus(); return; }
-    var tokenInput = $('cloud-token');
-    if (tokenInput) tokenInput.value = Cloud.getToken();
+    renderCloudToken();
     Cloud.pull().then(function (res) {
       if (res === false) { // אין חיבור/הענן לא זמין — ממשיכים מקומית בשקט
         cloudOnline = false;
@@ -1064,7 +1079,7 @@
           lsSet('ta_cloud_updated_at', res.updated_at);
           lsDel('ta_cloud_dirty');
           cloudOnline = true;
-          var ti = $('cloud-token'); if (ti) ti.value = code;
+          renderCloudToken();
           $('cloud-join-code').value = '';
           renderCloudStatus();
           loadAll().then(function () { toast('המכשיר חובר — הנתונים נטענו מהענן ☁️'); });
@@ -1073,7 +1088,7 @@
         if (!confirm('לא נמצאו נתונים תחת הקוד הזה.\nלדחוף את הנתונים הנוכחיים של המכשיר הזה אל הקוד החדש?')) return;
         Cloud.setToken(code);
         lsDel('ta_cloud_updated_at');
-        var ti2 = $('cloud-token'); if (ti2) ti2.value = code;
+        renderCloudToken();
         pushToCloudNow().then(function (ok) {
           toast(ok ? 'המכשיר חובר — הנתונים הועלו לענן ☁️' : 'ההעלאה לענן נכשלה — נסה שוב');
         });
@@ -1127,10 +1142,6 @@
       if (!trip) return;
       trip.activeStopId = chip.dataset.part === 'auto' ? 'auto' : Number(chip.dataset.part);
       DB.put('trips', trip).then(function () { loadAll(); });
-    });
-    $('author-select').addEventListener('change', function () {
-      state.author = this.value;
-      localStorage.setItem('ta.author', state.author);
     });
     $('trip-select').addEventListener('change', function () {
       state.currentTripId = Number(this.value);
@@ -1471,16 +1482,39 @@
     var cloudCopyBtn = $('cloud-copy-btn');
     if (cloudCopyBtn) cloudCopyBtn.addEventListener('click', function () {
       if (!window.Cloud) { toast('הענן לא זמין כרגע'); return; }
-      var token = Cloud.getToken();
+      var token = Cloud.getToken(); // תמיד הקוד המלא — גם כשהוא מוסווה על המסך
       function done() { toast('קוד הסנכרון הועתק'); }
       function fallback() {
-        var inp = $('cloud-token');
-        if (inp) { inp.focus(); inp.select(); try { document.execCommand('copy'); } catch (e) {} }
+        // לא בוחרים את שדה הקוד עצמו (הוא מוסווה) — מעתיקים דרך שדה זמני נסתר
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = token;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        } catch (e) {}
         done();
       }
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(token).then(done, fallback);
       } else fallback();
+    });
+    var cloudTokenToggle = $('cloud-token-toggle');
+    if (cloudTokenToggle) cloudTokenToggle.addEventListener('click', function () {
+      cloudTokenRevealed = !cloudTokenRevealed;
+      renderCloudToken();
+    });
+    var cloudNameInput = $('cloud-display-name');
+    if (cloudNameInput) cloudNameInput.value = getDisplayName();
+    var cloudNameSave = $('cloud-name-save');
+    if (cloudNameSave) cloudNameSave.addEventListener('click', function () {
+      var name = ($('cloud-display-name').value || '').trim();
+      if (name) lsSet('ta_display_name', name); else lsDel('ta_display_name');
+      state.author = name; // החתימה האוטומטית על עדכונים מעכשיו
+      toast(name ? 'השם נשמר — יופיע אוטומטית ליד העדכונים שלך' : 'השם נוקה');
     });
     var cloudJoinBtn = $('cloud-join-btn');
     if (cloudJoinBtn) cloudJoinBtn.addEventListener('click', function () {
