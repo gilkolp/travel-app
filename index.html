@@ -14,6 +14,10 @@
 <body>
 
 <header id="topbar">
+  <div class="topbar-brand">
+    <span class="brand-name">🧳 הטיולים שלי</span>
+    <span id="app-version-label" class="version-tag">גרסה 1.1</span>
+  </div>
   <div class="clocks">
     <div class="clock">
       <span class="clock-label">🇮🇱 ישראל</span>
@@ -294,6 +298,13 @@
 <div id="place-sheet" hidden>
   <button id="place-sheet-close" class="place-sheet-close" aria-label="סגור">✕</button>
   <div id="place-sheet-content"></div>
+</div>
+
+<div id="whatsnew-backdrop" hidden></div>
+<div id="whatsnew" hidden role="dialog" aria-modal="true" aria-labelledby="whatsnew-title">
+  <h3 id="whatsnew-title" class="whatsnew-title">🎉 מה חדש בגרסה 1.1</h3>
+  <ul id="whatsnew-list" class="whatsnew-list"></ul>
+  <button type="button" id="whatsnew-close" class="btn primary big">הבנתי</button>
 </div>
 
 <div id="toast" hidden></div>

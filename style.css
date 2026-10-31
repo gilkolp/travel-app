@@ -219,3 +219,34 @@ main { max-width: 640px; margin: 0 auto; padding: 12px; }
   background: #22302a; color: #fff; padding: 10px 16px; border-radius: 999px;
   font-size: 0.9rem; z-index: 200; box-shadow: 0 4px 14px rgba(0,0,0,.25); max-width: 88vw; text-align: center;
 }
+
+/* ===== מיתוג ותווית גרסה ===== */
+.topbar-brand {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 8px;
+}
+.brand-name { font-weight: 700; font-size: 0.98rem; }
+.version-tag {
+  font-size: 0.7rem; line-height: 1.5; opacity: .9; white-space: nowrap;
+  background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.45);
+  padding: 1px 8px; border-radius: 999px;
+}
+
+/* ===== חלון "מה חדש בגרסה" ===== */
+#whatsnew-backdrop {
+  position: fixed; inset: 0; z-index: 130; background: rgba(10, 22, 17, .5);
+}
+#whatsnew-backdrop[hidden] { display: none; }
+#whatsnew {
+  position: fixed; right: 0; left: 0; bottom: 0; z-index: 131;
+  max-width: 640px; margin: 0 auto;
+  background: #fff; color: var(--text);
+  border-radius: 18px 18px 0 0;
+  max-height: 80vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 20px 18px calc(18px + env(safe-area-inset-bottom));
+  box-shadow: 0 -6px 24px rgba(0,0,0,.28);
+}
+#whatsnew[hidden] { display: none; }
+.whatsnew-title { font-size: 1.15rem; margin: 0 0 10px; }
+.whatsnew-list { margin: 0 0 4px; padding-inline-start: 20px; line-height: 1.7; }
+.whatsnew-list li { margin-bottom: 6px; }
