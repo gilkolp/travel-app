@@ -193,7 +193,17 @@
       <div class="stay-links">
         <a class="btn primary big" id="stay-booking" href="#" target="_blank" rel="noopener">חיפוש ב־Booking.com</a>
         <a class="btn big" id="stay-airbnb" href="#" target="_blank" rel="noopener">חיפוש ב־Airbnb</a>
+        <a class="btn big" id="stay-google" href="#" target="_blank" rel="noopener">💰 מחירים בגוגל</a>
       </div>
+      <div class="form-actions">
+        <button class="btn primary" id="btn-search-stays">🔎 חפש מקומות לינה סביב החלק הפעיל</button>
+      </div>
+      <div id="stay-status" class="muted"></div>
+      <div id="stay-results" class="results-list"></div>
+      <hr class="sep">
+      <div id="liteapi-box"></div>
+      <div id="liteapi-status" class="muted"></div>
+      <div id="liteapi-results" class="results-list"></div>
     </div>
   </section>
 
@@ -278,6 +288,12 @@
     <span id="slideshow-counter"></span>
     <button id="slideshow-next" class="slideshow-btn">הבא ◀</button>
   </div>
+</div>
+
+<div id="place-sheet-backdrop" hidden></div>
+<div id="place-sheet" hidden>
+  <button id="place-sheet-close" class="place-sheet-close" aria-label="סגור">✕</button>
+  <div id="place-sheet-content"></div>
 </div>
 
 <div id="toast" hidden></div>
