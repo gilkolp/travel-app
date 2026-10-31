@@ -247,6 +247,10 @@
   function weatherRange() {
     var stop = activeStop();
     var today = todayStr();
+    if (stop && !stop.arrivalDate && !stop.departureDate) {
+      // לחלק אין תאריכים בכלל — אין תקופה להציג לה תחזית
+      return { stop: stop, nodates: true };
+    }
     if (stop && stop.arrivalDate && stop.departureDate) {
       if (stop.departureDate < today) {
         // החלק כבר הסתיים — מציגים תחזית לשבוע הקרוב במיקום החלק
@@ -262,6 +266,11 @@
     }
     return { stop: stop, start: today, end: addDays(today, 6), finished: false };
   }
+  function openStopEditor(stopId) {
+    showScreen('route');
+    var btn = document.querySelector('#stops-list button[data-act="edit"][data-id="' + stopId + '"]');
+    if (btn) btn.click();
+  }
   function renderWeather() {
     var box = $('weather-days');
     var placeEl = $('weather-place');
@@ -269,6 +278,15 @@
     if (!stop) {
       placeEl.textContent = 'בחר טיול וחלק עם מיקום כדי לראות מזג אוויר.';
       box.innerHTML = '';
+      return;
+    }
+    var range = weatherRange();
+    if (range.nodates) {
+      placeEl.textContent = 'לחלק "' + (stop.city || stop.country || '') +
+        '" אין תאריכים — הגדר תאריכים לחלק כדי לראות תחזית מדויקת לתקופתו.';
+      box.innerHTML = '<button type="button" class="btn small" id="btn-weather-edit-stop">✏️ הגדר תאריכים לחלק</button>';
+      var editBtn = $('btn-weather-edit-stop');
+      if (editBtn) editBtn.addEventListener('click', function () { openStopEditor(stop.id); });
       return;
     }
     if (stop.lat == null || stop.lon == null) {
@@ -281,7 +299,6 @@
       }
       return;
     }
-    var range = weatherRange();
     if (range.finished) {
       placeEl.textContent = 'החלק "' + (stop.city || stop.country || '') + '" כבר הסתיים — ' +
         'הנה תחזית לשבוע הקרוב ב' + (stop.city || stop.country || '') +
@@ -356,13 +373,15 @@
       t.classList.toggle('active', t.dataset.tab === state.discoverTab);
     });
   }
+  var lastRenderedPlaces = [];
   function renderPlaces(places, kindLabel) {
+    lastRenderedPlaces = places;
     var box = $('discover-results');
     if (!places.length) {
       box.innerHTML = '<div class="empty">לא נמצאו ' + esc(kindLabel) + ' באזור הזה ב־OpenStreetMap.</div>';
       return;
     }
-    box.innerHTML = places.map(function (p) {
+    box.innerHTML = places.map(function (p, i) {
       return '<div class="list-item">' +
         '<div class="item-title">' + esc(p.name) + '</div>' +
         (p.localName ? '<div class="item-sub">בשפת המקום: ' + esc(p.localName) + '</div>' : '') +
@@ -372,10 +391,69 @@
         (p.openingHours ? '<br>🕐 ' + esc(p.openingHours) : '') +
         '</div>' +
         '<div class="item-actions">' +
+        '<button type="button" class="btn small" data-place-details="' + i + '">📖 הסבר ופרטים</button>' +
         '<a class="btn small navlink" target="_blank" rel="noopener" href="' + API.mapsLink(p) + '">🧭 ניווט במפות</a>' +
         (p.website ? '<a class="btn small" target="_blank" rel="noopener" href="' + esc(p.website) + '">אתר</a>' : '') +
         '</div></div>';
     }).join('');
+  }
+
+  /* ---------- פאנל פירוט מקום (הסבר מוויקיפדיה) ---------- */
+  var placeInfoCache = {}; // name@lat,lon -> info | null
+  var currentSheetKey = null;
+  function closePlaceSheet() {
+    $('place-sheet').hidden = true;
+    $('place-sheet-backdrop').hidden = true;
+    currentSheetKey = null;
+  }
+  function showPlaceDetails(place) {
+    var sheet = $('place-sheet');
+    var content = $('place-sheet-content');
+    var key = place.name + '@' + Number(place.lat).toFixed(4) + ',' + Number(place.lon).toFixed(4);
+    currentSheetKey = key;
+    sheet.hidden = false;
+    $('place-sheet-backdrop').hidden = false;
+    var navBtn = '<a class="btn small navlink" target="_blank" rel="noopener" href="' + API.mapsLink(place) + '">🧭 ניווט במפות</a>';
+    content.innerHTML =
+      '<h3 class="sheet-title">' + esc(place.name) + '</h3>' +
+      (place.localName ? '<div class="item-sub">בשפת המקום: ' + esc(place.localName) + '</div>' : '') +
+      '<div class="item-sub">' +
+      (place.kind ? esc(place.kind) + ' · ' : '') + API.formatDistance(place.distanceKm) +
+      (place.cuisine ? ' · ' + esc(place.cuisine) : '') +
+      (place.openingHours ? '<br>🕐 ' + esc(place.openingHours) : '') +
+      '</div>' +
+      (place.priceText ? '<div class="sheet-price">' + esc(place.priceText) + '</div>' : '') +
+      '<div id="sheet-info"><div class="muted">טוען הסבר…</div></div>';
+    sheet.scrollTop = 0;
+    function fillInfo(info) {
+      var infoBox = $('sheet-info');
+      if (!infoBox) return;
+      var infoUrl = (info && info.url) ? info.url
+        : 'https://www.google.com/search?q=' + encodeURIComponent(place.name);
+      var html = '';
+      if (info && info.image) html += '<img class="sheet-img" alt="" src="' + esc(info.image) + '">';
+      if (info && info.extract) html += '<p class="sheet-extract">' + esc(info.extract) + '</p>';
+      else html += '<p class="muted">אין הסבר זמין למקום הזה.</p>';
+      html += '<div class="item-actions">' + navBtn +
+        '<a class="btn small" target="_blank" rel="noopener" href="' + esc(infoUrl) + '">ℹ️ מידע נוסף וכרטיסים</a></div>';
+      infoBox.innerHTML = html;
+    }
+    if (key in placeInfoCache) { fillInfo(placeInfoCache[key]); return; }
+    API.fetchPlaceInfo(place.lat, place.lon, place.name).then(function (info) {
+      placeInfoCache[key] = info;
+      if (currentSheetKey === key && !sheet.hidden) fillInfo(info);
+    }).catch(function () {
+      placeInfoCache[key] = null;
+      if (currentSheetKey === key && !sheet.hidden) fillInfo(null);
+    });
+  }
+  function detailsClickHandler(getList) {
+    return function (e) {
+      var btn = e.target.closest('button[data-place-details]');
+      if (!btn) return;
+      var p = getList()[Number(btn.dataset.placeDetails)];
+      if (p) showPlaceDetails(p);
+    };
   }
   function runDiscover(lat, lon, sourceLabel) {
     var status = $('discover-status');
@@ -417,6 +495,133 @@
       (checkin ? '&checkin=' + checkin : '') + (checkout ? '&checkout=' + checkout : '');
     $('stay-airbnb').href = 'https://www.airbnb.com/s/' + q + '/homes' +
       (checkin ? '?checkin=' + checkin : '') + (checkout ? (checkin ? '&' : '?') + 'checkout=' + checkout : '');
+    $('stay-google').href = 'https://www.google.com/travel/hotels?q=' + q +
+      (checkin ? '&checkin=' + checkin : '') + (checkout ? '&checkout=' + checkout : '');
+    renderLiteApiBox();
+  }
+
+  /* ---------- לינה: חיפוש מקומות לינה סביב החלק הפעיל ---------- */
+  var lastStayPlaces = [];
+  function renderStayPlaces(places) {
+    lastStayPlaces = places;
+    var box = $('stay-results');
+    if (!places.length) {
+      box.innerHTML = '<div class="empty">לא נמצאו מקומות לינה באזור הזה ב־OpenStreetMap.</div>';
+      return;
+    }
+    box.innerHTML = places.map(function (p, i) {
+      return '<div class="list-item">' +
+        '<div class="item-title">' + esc(p.name) + '</div>' +
+        (p.localName ? '<div class="item-sub">בשפת המקום: ' + esc(p.localName) + '</div>' : '') +
+        '<div class="item-sub">' +
+        (p.kind ? esc(p.kind) + ' · ' : '') + API.formatDistance(p.distanceKm) +
+        '</div>' +
+        '<div class="item-actions">' +
+        '<button type="button" class="btn small" data-place-details="' + i + '">📖 הסבר ופרטים</button>' +
+        '<a class="btn small navlink" target="_blank" rel="noopener" href="' + API.mapsLink(p) + '">🧭 ניווט במפות</a>' +
+        '</div></div>';
+    }).join('');
+  }
+  function withStopCoords(stop, statusEl, onReady) {
+    if (stop.lat != null) { onReady(); return; }
+    statusEl.textContent = 'מאתר את מיקום החלק…';
+    ensureStopCoords(stop).then(function () {
+      renderAll();
+      if (stop.lat != null) onReady();
+      else {
+        statusEl.textContent = '';
+        toast('לחלק הפעיל אין קואורדינטות — ערוך אותו במסלול');
+      }
+    });
+  }
+  function runStaySearch() {
+    var stop = activeStop();
+    var status = $('stay-status');
+    if (!stop) { toast('אין חלק פעיל'); return; }
+    withStopCoords(stop, status, function () {
+      status.textContent = 'מחפש מקומות לינה סביב ' + (stop.city || stop.country || 'החלק הפעיל') + '…';
+      API.findStays(stop.lat, stop.lon).then(function (places) {
+        status.textContent = 'נמצאו ' + places.length + ' מקומות לינה סביב ' +
+          (stop.city || stop.country || 'החלק הפעיל') + ' (מקור: OpenStreetMap).';
+        renderStayPlaces(places);
+      }).catch(function () {
+        status.textContent = 'החיפוש נכשל — בדוק חיבור לאינטרנט ונסה שוב.';
+      });
+    });
+  }
+
+  /* ---------- לינה: מחירי מלונות דרך LiteAPI ---------- */
+  function liteapiKeySaved() {
+    try { return !!(localStorage.getItem('liteapi_key') || '').trim(); } catch (e) { return false; }
+  }
+  function renderLiteApiBox() {
+    var box = $('liteapi-box');
+    if (!box) return;
+    if (liteapiKeySaved()) {
+      box.innerHTML =
+        '<h3>🏨 מחירי מלונות (LiteAPI)</h3>' +
+        '<div class="form-actions">' +
+        '<button type="button" class="btn primary" id="btn-liteapi-search">🏨 חפש מלונות עם מחירים (LiteAPI)</button>' +
+        '<button type="button" class="btn danger" id="btn-liteapi-disconnect">נתק</button>' +
+        '</div>';
+      $('btn-liteapi-search').addEventListener('click', runLiteApiSearch);
+      $('btn-liteapi-disconnect').addEventListener('click', function () {
+        try { localStorage.removeItem('liteapi_key'); } catch (e) {}
+        $('liteapi-results').innerHTML = '';
+        $('liteapi-status').textContent = '';
+        renderLiteApiBox();
+        toast('החיבור ל־LiteAPI נותק והמפתח נמחק');
+      });
+    } else {
+      box.innerHTML =
+        '<h3>🏨 מחירי מלונות (LiteAPI)</h3>' +
+        '<p class="hint">אפשר לחבר מפתח Sandbox חינמי של LiteAPI (נרשמים ב־liteapi.travel) כדי לראות כאן מחירי מלונות אמיתיים לפי החלק הפעיל והתאריכים שלו. המפתח נשמר רק במכשיר שלך.</p>' +
+        '<label class="field"><span>API Key</span>' +
+        '<input type="text" id="liteapi-key" autocomplete="off" placeholder="LiteAPI API Key"></label>' +
+        '<div class="form-actions"><button type="button" class="btn primary" id="btn-liteapi-save">שמור מפתח</button></div>';
+      $('btn-liteapi-save').addEventListener('click', function () {
+        var key = $('liteapi-key').value.trim();
+        if (!key) { toast('מלא את שדה המפתח'); return; }
+        try { localStorage.setItem('liteapi_key', key); } catch (e) {}
+        renderLiteApiBox();
+        toast('המפתח נשמר במכשיר');
+      });
+    }
+  }
+  function renderLiteApiResults(offers) {
+    var box = $('liteapi-results');
+    if (!offers.length) { box.innerHTML = ''; return; }
+    box.innerHTML = offers.map(function (p) {
+      var searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent(p.name + ' hotel booking');
+      return '<div class="list-item">' +
+        '<div class="item-title">' + esc(p.name) + '</div>' +
+        '<div class="item-sub">' + API.formatDistance(p.distanceKm) +
+        (p.rating ? ' · ⭐ ' + esc(p.rating) : '') + '</div>' +
+        (p.priceText ? '<div class="price-tag">' + esc(p.priceText) + '</div>' : '') +
+        '<div class="item-actions">' +
+        '<a class="btn small navlink" target="_blank" rel="noopener" href="' + searchUrl + '">לפרטים והזמנה</a>' +
+        '</div></div>';
+    }).join('');
+  }
+  function runLiteApiSearch() {
+    var stop = activeStop();
+    var trip = currentTrip();
+    var status = $('liteapi-status');
+    if (!stop) { toast('אין חלק פעיל'); return; }
+    withStopCoords(stop, status, function () {
+      var checkin = stop.arrivalDate || (trip && trip.startDate) || '';
+      var checkout = stop.departureDate || (trip && trip.endDate) || '';
+      status.textContent = 'מחפש מלונות עם מחירים…';
+      API.findHotelPrices(stop.lat, stop.lon, checkin, checkout).then(function (offers) {
+        status.textContent = offers.length
+          ? 'נמצאו ' + offers.length + ' מלונות עם מחירים (מקור: LiteAPI).'
+          : 'לא נמצאו הצעות מחיר לתאריכים האלה.';
+        renderLiteApiResults(offers);
+      }).catch(function () {
+        status.textContent = 'לא ניתן לטעון מחירים כרגע — ייתכן שהמפתח שגוי או שהשירות חסום מהדפדפן';
+        $('liteapi-results').innerHTML = '';
+      });
+    });
   }
 
   /* ---------- רינדור: יומן ---------- */
@@ -856,6 +1061,15 @@
         $('discover-status').textContent = 'לא הצלחתי לקבל מיקום מהמכשיר.';
       }, { timeout: 12000 });
     });
+
+    /* פרטי מקום (גילוי + לינה) ופאנל הפירוט */
+    $('discover-results').addEventListener('click', detailsClickHandler(function () { return lastRenderedPlaces; }));
+    $('stay-results').addEventListener('click', detailsClickHandler(function () { return lastStayPlaces; }));
+    $('place-sheet-close').addEventListener('click', closePlaceSheet);
+    $('place-sheet-backdrop').addEventListener('click', closePlaceSheet);
+
+    /* לינה */
+    $('btn-search-stays').addEventListener('click', runStaySearch);
 
     /* מזג אוויר */
     $('btn-refresh-weather').addEventListener('click', renderWeather);

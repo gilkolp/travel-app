@@ -193,7 +193,23 @@
     });
   }
 
+  /* ---------- מטמון בזיכרון לחיפושי מקומות (10 דקות) ---------- */
+  var searchCache = {}; // key -> { at: timestamp, places: [...] }
+  var SEARCH_CACHE_TTL = 10 * 60 * 1000;
+  function cacheKey(fnName, lat, lon) {
+    return fnName + '@' + Number(lat).toFixed(3) + ',' + Number(lon).toFixed(3);
+  }
+  function cacheGet(key) {
+    var e = searchCache[key];
+    if (e && (Date.now() - e.at) < SEARCH_CACHE_TTL) return e.places;
+    return null;
+  }
+  function cacheSet(key, places) { searchCache[key] = { at: Date.now(), places: places }; }
+
   function findAttractions(lat, lon) {
+    var key = cacheKey('attractions', lat, lon);
+    var hit = cacheGet(key);
+    if (hit) return Promise.resolve(hit);
     var queries = ['tourist attraction', 'museum', 'viewpoint', 'park', 'castle', 'art gallery', 'temple', 'zoo', 'aquarium', 'garden'];
     return photonPlaces(queries, lat, lon, 6, function (p) {
       if (p.osmKey === 'tourism') return p.kind !== 'hotel' && p.kind !== 'hostel' && p.kind !== 'apartment' && p.kind !== 'guest_house';
@@ -201,20 +217,52 @@
       if (p.osmKey === 'historic') return true;
       if (p.osmKey === 'amenity') return p.kind === 'arts_centre' || p.kind === 'theatre' || p.kind === 'place_of_worship' || p.kind === 'marketplace';
       return false;
-    }).then(function (places) { return places.slice(0, 40); });
+    }).then(function (places) {
+      var out = places.slice(0, 40);
+      cacheSet(key, out);
+      return out;
+    });
+  }
+
+  /* ---------- השלמת כשרות מ־Overpass: כמה שרתים בזה אחר זה + סבב חוזר אחד ---------- */
+  var KOSHER_OVERPASS_URLS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter',
+    'https://overpass.nchc.org.tw/api/interpreter'
+  ];
+  function kosherOverpassRound(q) {
+    var chain = Promise.reject(new Error('no endpoint tried yet'));
+    KOSHER_OVERPASS_URLS.forEach(function (url) {
+      chain = chain.catch(function () { return overpassOnce(url, q, 20000); });
+    });
+    return chain;
+  }
+  function kosherOverpass(q) {
+    return kosherOverpassRound(q).catch(function () {
+      // כל השרתים נכשלו — ממתינים 3 שניות ומנסים סבב אחד נוסף
+      return new Promise(function (resolve) { setTimeout(resolve, 3000); })
+        .then(function () { return kosherOverpassRound(q); });
+    }).catch(function () { return null; });
   }
 
   function findKosher(lat, lon, onPartial) {
+    var key = cacheKey('kosher', lat, lon);
+    var hit = cacheGet(key);
+    if (hit) {
+      if (onPartial && hit.length) onPartial(hit);
+      return Promise.resolve(hit);
+    }
     var photonPart = photonPlaces(['kosher restaurant', 'kosher', 'kosher food', 'כשר'], lat, lon, 9, function (p) {
       return /kosher|כשר/i.test(p.name);
     });
-    // השלמה מתגית diet:kosher ב־Overpass — שאילתה זולה אחת, שרת אחד, זמן מוגבל.
+    // השלמה מתגית diet:kosher ב־Overpass — שאילתה זולה אחת, מול כמה שרתים עד שאחד עונה.
     var q = '[out:json][timeout:25];(' +
       'nwr["diet:kosher"="yes"](around:9000,' + lat + ',' + lon + ');' +
       'nwr["kosher"="yes"](around:9000,' + lat + ',' + lon + ');' +
       ');out center 60;';
-    var overpassPart = overpassOnce(OVERPASS_URLS[0], q, 40000)
-      .then(function (data) { return collect(data.elements || [], lat, lon, 40); })
+    var overpassPart = kosherOverpass(q)
+      .then(function (data) { return data ? collect(data.elements || [], lat, lon, 40) : []; })
       .catch(function () { return []; });
     if (onPartial) {
       photonPart.then(function (places) { if (places.length) onPartial(places); }).catch(function () {});
@@ -222,20 +270,217 @@
     return Promise.all([photonPart.catch(function () { return []; }), overpassPart]).then(function (parts) {
       var seen = {}, out = [];
       parts[0].concat(parts[1]).forEach(function (p) {
-        var key = p.name + '@' + p.lat.toFixed(4) + ',' + p.lon.toFixed(4);
-        if (seen[key]) return;
-        seen[key] = true;
+        var k = p.name + '@' + p.lat.toFixed(4) + ',' + p.lon.toFixed(4);
+        if (seen[k]) return;
+        seen[k] = true;
         out.push(p);
       });
       out.sort(function (a, b) { return a.distanceKm - b.distanceKm; });
-      return out.slice(0, 40);
+      var final = out.slice(0, 40);
+      cacheSet(key, final);
+      return final;
     });
   }
 
   function findChabad(lat, lon) {
+    var key = cacheKey('chabad', lat, lon);
+    var hit = cacheGet(key);
+    if (hit) return Promise.resolve(hit);
     return photonPlaces(['Chabad', 'Chabad House', 'Lubavitch', 'בית חב״ד', 'בית חבד'], lat, lon, 25, function (p) {
       return p.osmKey !== 'highway' && /chabad|lubavitch|habad|חב/i.test(p.name);
-    }).then(function (places) { return places.slice(0, 30); });
+    }).then(function (places) {
+      var out = places.slice(0, 30);
+      cacheSet(key, out);
+      return out;
+    });
+  }
+
+  function findStays(lat, lon) {
+    var key = cacheKey('stays', lat, lon);
+    var hit = cacheGet(key);
+    if (hit) return Promise.resolve(hit);
+    return photonPlaces(['hotel', 'hostel', 'apartment', 'guest house', 'bed and breakfast'], lat, lon, 10, function (p) {
+      return p.osmKey === 'tourism' &&
+        ['hotel', 'hostel', 'apartment', 'guest_house', 'chalet', 'motel'].indexOf(p.kind) !== -1;
+    }).then(function (places) {
+      var out = places.slice(0, 40);
+      cacheSet(key, out);
+      return out;
+    });
+  }
+
+  /* ---------- פרטי מקום מוויקיפדיה: הסבר + תמונה + קישור ---------- */
+  function wikiQuery(base, params) {
+    var qs = Object.keys(params).map(function (k) {
+      return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+    }).join('&');
+    return fetch(base + '/w/api.php?' + qs).then(function (r) {
+      if (!r.ok) throw new Error('wikipedia failed: ' + r.status);
+      return r.json();
+    });
+  }
+  function wikiPages(data) {
+    var pages = (data && data.query && data.query.pages) || {};
+    return Object.keys(pages).map(function (k) { return pages[k]; });
+  }
+  function wikiResult(p, lang) {
+    return {
+      title: p.title || '',
+      extract: p.extract || '',
+      image: (p.thumbnail && p.thumbnail.source) || '',
+      url: p.fullurl || '',
+      lang: lang
+    };
+  }
+  function wikiProps() {
+    return {
+      prop: 'extracts|pageimages|info|coordinates', inprop: 'url',
+      explaintext: 1, exintro: 1, exsentences: 6,
+      piprop: 'thumbnail', pithumbsize: 500,
+      format: 'json', origin: '*'
+    };
+  }
+  function fetchPlaceInfo(lat, lon, name) {
+    function geo(base, lang) {
+      var params = wikiProps();
+      params.action = 'query';
+      params.generator = 'geosearch';
+      params.ggscoord = lat + '|' + lon;
+      params.ggsradius = 400;
+      params.ggslimit = 5;
+      return wikiQuery(base, params).then(function (data) {
+        var best = null, bestD = Infinity;
+        wikiPages(data).forEach(function (p) {
+          if (!p.extract) return;
+          var d = (p.coordinates && p.coordinates.length)
+            ? haversineKm(lat, lon, p.coordinates[0].lat, p.coordinates[0].lon) : 0.5;
+          if (d < bestD) { bestD = d; best = p; }
+        });
+        return best ? wikiResult(best, lang) : null;
+      }).catch(function () { return null; });
+    }
+    function byName(base, lang) {
+      if (!name) return Promise.resolve(null);
+      var params = wikiProps();
+      params.action = 'query';
+      params.generator = 'search';
+      params.gsrsearch = name;
+      params.gsrlimit = 3;
+      return wikiQuery(base, params).then(function (data) {
+        var pages = wikiPages(data).filter(function (p) { return p.extract; });
+        pages.sort(function (a, b) { return (a.index || 99) - (b.index || 99); });
+        return pages.length ? wikiResult(pages[0], lang) : null;
+      }).catch(function () { return null; });
+    }
+    var HE = 'https://he.wikipedia.org', EN = 'https://en.wikipedia.org';
+    return geo(HE, 'he').then(function (r) {
+      return r || geo(EN, 'en');
+    }).then(function (r) {
+      return r || byName(HE, 'he');
+    }).then(function (r) {
+      return r || byName(EN, 'en');
+    }).catch(function () { return null; });
+  }
+
+  /* ---------- LiteAPI: מחירי מלונות (מפתח Sandbox חינמי בהרשמה עצמית, נשמר במכשיר) ----------
+     מבנה לפי API reference v3.0 (docs.liteapi.travel):
+     - כותרת X-API-Key בכל קריאה, בסיס https://api.liteapi.travel/v3.0
+     - GET /data/hotels?latitude&longitude&radius(מטרים)&limit — רשימת מלונות סביב נקודה
+     - POST /hotels/rates עם hotelIds, checkin, checkout, currency, guestNationality,
+       occupancies — מחיר סופי ב־roomTypes[].rates[].retailRate.total[] ({amount, currency})
+     הערה: לפי תיעוד LiteAPI הקריאות מיועדות לצד שרת (מגבלות CORS מהדפדפן אפשריות). */
+  var LITEAPI_BASE = 'https://api.liteapi.travel/v3.0';
+  function isoDate(d) {
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + day;
+  }
+  function liteapiKey(keyOverride) {
+    if (keyOverride) return String(keyOverride).trim();
+    try { return (localStorage.getItem('liteapi_key') || '').trim(); } catch (e) { return ''; }
+  }
+  function liteapiFetch(path, options, key) {
+    options = options || {};
+    var headers = { 'X-API-Key': key, 'Accept': 'application/json' };
+    Object.keys(options.headers || {}).forEach(function (k) { headers[k] = options.headers[k]; });
+    options.headers = headers;
+    return fetch(LITEAPI_BASE + path, options).then(function (r) {
+      if (!r.ok) throw new Error('liteapi failed: ' + r.status);
+      return r.json();
+    });
+  }
+  function findHotelPrices(lat, lon, checkIn, checkOut, keyOverride) {
+    var key = liteapiKey(keyOverride);
+    if (!key) return Promise.reject(new Error('missing liteapi key'));
+    if (!checkIn || !checkOut) {
+      var inD = new Date(); inD.setDate(inD.getDate() + 7);
+      var outD = new Date(); outD.setDate(outD.getDate() + 9);
+      checkIn = isoDate(inD);
+      checkOut = isoDate(outD);
+    }
+    var hotelsPath = '/data/hotels?latitude=' + lat + '&longitude=' + lon + '&radius=20000&limit=30';
+    return liteapiFetch(hotelsPath, null, key).then(function (hdata) {
+      var meta = {}, ids = [];
+      (hdata.data || []).forEach(function (h) {
+        var id = h.id || h.hotelId;
+        if (!id) return;
+        var hLat = h.latitude != null ? h.latitude : (h.location && h.location.latitude);
+        var hLon = h.longitude != null ? h.longitude : (h.location && h.location.longitude);
+        meta[id] = {
+          name: h.name || '',
+          lat: hLat != null ? hLat : lat,
+          lon: hLon != null ? hLon : lon,
+          rating: h.stars != null ? h.stars
+            : (h.starRating != null ? h.starRating : (h.rating != null ? h.rating : null))
+        };
+        ids.push(id);
+      });
+      if (!ids.length) return [];
+      var body = {
+        hotelIds: ids,
+        checkin: checkIn,
+        checkout: checkOut,
+        currency: 'USD',
+        guestNationality: 'US',
+        occupancies: [{ adults: 2 }],
+        timeout: 10,
+        maxRatesPerHotel: 1
+      };
+      return liteapiFetch('/hotels/rates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }, key).then(function (rdata) {
+        var out = [];
+        (rdata.data || []).forEach(function (item) {
+          var m = meta[item.hotelId];
+          if (!m || !m.name) return;
+          var best = null;
+          (item.roomTypes || []).forEach(function (rt) {
+            (rt.rates || []).forEach(function (rate) {
+              var totals = (rate.retailRate && rate.retailRate.total) || [];
+              var sum = 0, cur = '';
+              totals.forEach(function (t) {
+                if (t && t.amount != null) { sum += Number(t.amount); cur = cur || t.currency || ''; }
+              });
+              if (sum > 0 && (!best || sum < best.amount)) best = { amount: sum, currency: cur };
+            });
+          });
+          if (!best) return;
+          out.push({
+            name: m.name,
+            localName: '', searchText: m.name,
+            lat: m.lat, lon: m.lon,
+            kind: 'hotel', cuisine: '', openingHours: '', website: '',
+            distanceKm: haversineKm(lat, lon, m.lat, m.lon),
+            rating: m.rating,
+            priceText: (String(Math.round(best.amount * 100) / 100) + ' ' + best.currency).trim()
+          });
+        });
+        out.sort(function (a, b) { return a.distanceKm - b.distanceKm; });
+        return out;
+      });
+    });
   }
 
   function mapsLink(p) {
@@ -252,6 +497,9 @@
     findAttractions: findAttractions,
     findKosher: findKosher,
     findChabad: findChabad,
+    findStays: findStays,
+    findHotelPrices: findHotelPrices,
+    fetchPlaceInfo: fetchPlaceInfo,
     haversineKm: haversineKm,
     formatDistance: formatDistance,
     mapsLink: mapsLink,
