@@ -7,8 +7,11 @@
   var $ = function (id) { return document.getElementById(id); };
 
   /* ---------- גרסת האפליקציה ורשימת השינויים ---------- */
-  var APP_VERSION = '1.5';
+  var APP_VERSION = '1.6';
   var CHANGELOG = {
+    '1.6': [
+      'בהפעלה הראשונה האפליקציה מבקשת את שמך — כדי שכל עדכון ייחתם אוטומטית'
+    ],
     '1.5': [
       'קוד הסנכרון מוסתר מעכשיו — מעתיקים אותו בלחיצה, בלי שהוא גלוי על המסך',
       'השם שלך נחתם אוטומטית על עדכונים — לא צריך יותר למלא מי עדכן'
@@ -919,6 +922,7 @@
     $('whatsnew').hidden = true;
     $('whatsnew-backdrop').hidden = true;
     rememberSeenVersion();
+    maybeShowNamePrompt(); // אם צריך שם — הבקשה מופיעה מיד אחרי סגירת "מה חדש"
   }
   function showWhatsNew() {
     var items = CHANGELOG[APP_VERSION] || [];
@@ -931,12 +935,56 @@
   }
   // נקרא אחרי הטעינה הראשונית: מציג את החלון רק למי שכבר השתמש בגרסה קודמת.
   // משתמש חדש לגמרי (אין גרסה שמורה ואין שום נתונים) — הגרסה נשמרת בשקט, בלי חלון.
+  // מחזיר true אם החלון הוצג (כדי שבקשת השם תחכה לסגירתו).
   function maybeShowWhatsNew() {
     var seen = null;
     try { seen = localStorage.getItem('ta_seen_version'); } catch (e) {}
-    if (seen === APP_VERSION) return;
-    if (seen == null && !hasAnySavedData()) { rememberSeenVersion(); return; }
+    if (seen === APP_VERSION) return false;
+    if (seen == null && !hasAnySavedData()) { rememberSeenVersion(); return false; }
     showWhatsNew();
+    return true;
+  }
+
+  /* ---------- בקשת שם חד־פעמית (שדה חובה) ----------
+     אם לא הוגדר שם למכשיר — מבקשים פעם אחת (אחרי "מה חדש" אם הופיע).
+     אין דילוג ואין סגירה מהרקע: החלון יורד רק בשמירת שם לא ריק, ואז לא חוזר. */
+  function namePromptNeeded() {
+    var name = '';
+    var prompted = null;
+    try {
+      name = (localStorage.getItem('ta_display_name') || '').trim();
+      prompted = localStorage.getItem('ta_name_prompted');
+    } catch (e) {}
+    return !name && !prompted;
+  }
+  function showNamePrompt() {
+    $('nameprompt').hidden = false;
+    $('nameprompt-backdrop').hidden = false;
+    var inp = $('nameprompt-input');
+    if (inp) { try { inp.focus(); } catch (e) {} }
+  }
+  function maybeShowNamePrompt() {
+    if (!namePromptNeeded()) return false;
+    showNamePrompt();
+    return true;
+  }
+  // נתיב הסגירה היחיד של החלון: שם לא ריק נשמר, ורק אז החלון יורד.
+  function saveNamePrompt() {
+    var inp = $('nameprompt-input');
+    var name = ((inp && inp.value) || '').trim();
+    if (!name) {
+      var hint = $('nameprompt-hint');
+      if (hint) hint.hidden = false; // שדה חובה — נשארים בחלון עם רמז
+      if (inp) { try { inp.focus(); } catch (e) {} }
+      return;
+    }
+    lsSet('ta_display_name', name);
+    lsSet('ta_name_prompted', '1');
+    state.author = name; // כמו כפתור שמירת השם בכרטיס הענן
+    var cardInput = $('cloud-display-name');
+    if (cardInput) cardInput.value = name;
+    $('nameprompt').hidden = true;
+    $('nameprompt-backdrop').hidden = true;
   }
 
   /* ---------- ענן וסנכרון (Supabase) ----------
@@ -1388,6 +1436,15 @@
     /* חלון "מה חדש בגרסה" */
     $('whatsnew-close').addEventListener('click', closeWhatsNew);
     $('whatsnew-backdrop').addEventListener('click', closeWhatsNew);
+    // בקשת שם: בכוונה אין מאזין לרקע ואין כפתור סגירה — רק "שמור" עם שם תקין סוגר.
+    $('nameprompt-save').addEventListener('click', saveNamePrompt);
+    $('nameprompt-input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); saveNamePrompt(); }
+    });
+    $('nameprompt-input').addEventListener('input', function () {
+      var hint = $('nameprompt-hint');
+      if (hint && ($('nameprompt-input').value || '').trim()) hint.hidden = true;
+    });
 
     /* לינה */
     $('btn-search-stays').addEventListener('click', runStaySearch);
@@ -1534,7 +1591,8 @@
     if (window.DB && DB.setWriteListener) DB.setWriteListener(markCloudDirty);
     renderCloudStatus();
     loadAll().then(function () {
-      maybeShowWhatsNew();
+      var whatsNewShown = maybeShowWhatsNew();
+      if (!whatsNewShown) maybeShowNamePrompt(); // אם "מה חדש" הוצג — הבקשה תחכה לסגירתו
       initCloudSync();
     });
     tickClocks();
