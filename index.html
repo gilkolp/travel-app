@@ -16,7 +16,7 @@
 <header id="topbar">
   <div class="topbar-brand">
     <span class="brand-name">🧳 הטיולים שלי</span>
-    <span id="app-version-label" class="version-tag">גרסה 1.4</span>
+    <span id="app-version-label" class="version-tag">גרסה 1.5</span>
   </div>
   <div class="clocks">
     <div class="clock">
@@ -34,10 +34,6 @@
   <div class="topbar-row">
     <label for="active-stop-select">החלק הפעיל בטיול</label>
     <select id="active-stop-select"></select>
-  </div>
-  <div class="topbar-row">
-    <label for="author-select">מי מעדכן</label>
-    <select id="author-select"></select>
   </div>
   <div id="parts-bar" class="parts-bar" hidden></div>
 </header>
@@ -112,11 +108,20 @@
       <h2>☁️ ענן וסנכרון</h2>
       <div id="cloud-status" class="muted">ענן: בודק חיבור…</div>
       <label class="field">
+        <span>השם שלי במכשיר הזה</span>
+        <input type="text" id="cloud-display-name" autocomplete="off" placeholder="למשל: גיל">
+      </label>
+      <p class="hint">השם יופיע אוטומטית ליד העדכונים שלך — לא צריך יותר לבחור מי מעדכן.</p>
+      <div class="form-actions">
+        <button type="button" class="btn small" id="cloud-name-save">שמור שם</button>
+      </div>
+      <label class="field">
         <span>קוד הסנכרון של המכשיר הזה (סודי — רק למכשירים שלך)</span>
         <input type="text" id="cloud-token" readonly autocomplete="off">
       </label>
       <div class="form-actions">
         <button type="button" class="btn small" id="cloud-copy-btn">📋 העתק קוד</button>
+        <button type="button" class="btn small" id="cloud-token-toggle">👁️ הצג קוד</button>
       </div>
       <label class="field">
         <span>חיבור המכשיר הזה לקוד של מכשיר אחר</span>
@@ -186,7 +191,7 @@
         </label>
         <button type="submit" class="btn primary">הוסף</button>
       </form>
-      <p class="hint">בחירת "מי מעדכן" למעלה נשמרת ליד כל רשומת יומן, חלק ומסמך שתוסיף.</p>
+      <p class="hint">השם שהגדרת בכרטיס "☁️ ענן וסנכרון" נחתם אוטומטית ליד כל רשומת יומן, חלק ומסמך שתוסיף.</p>
     </div>
   </section>
 
@@ -323,7 +328,7 @@
 
 <div id="whatsnew-backdrop" hidden></div>
 <div id="whatsnew" hidden role="dialog" aria-modal="true" aria-labelledby="whatsnew-title">
-  <h3 id="whatsnew-title" class="whatsnew-title">🎉 מה חדש בגרסה 1.4</h3>
+  <h3 id="whatsnew-title" class="whatsnew-title">🎉 מה חדש בגרסה 1.5</h3>
   <ul id="whatsnew-list" class="whatsnew-list"></ul>
   <button type="button" id="whatsnew-close" class="btn primary big">הבנתי</button>
 </div>

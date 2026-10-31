@@ -1,6 +1,6 @@
 /* sw.js — Service Worker: שמירת מעטפת האפליקציה לעבודה אופליין.
    נתוני API (מזג אוויר, מפות) תמיד נטענים מהרשת כשהיא זמינה. */
-var CACHE_NAME = 'travel-app-shell-v11';
+var CACHE_NAME = 'travel-app-shell-v12';
 var SHELL = [
   './',
   'index.html',
