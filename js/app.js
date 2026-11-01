@@ -7,8 +7,12 @@
   var $ = function (id) { return document.getElementById(id); };
 
   /* ---------- גרסת האפליקציה ורשימת השינויים ---------- */
-  var APP_VERSION = '1.8';
+  var APP_VERSION = '1.9';
   var CHANGELOG = {
+    '1.9': [
+      'היסטוריית טיולים: מסיימים טיול ושומרים אותו עם היומן והתמונות — ומהארכיון אפשר לשחזר או למחוק לצמיתות',
+      'שם עיר הבית מוצג עכשיו בגודל מלא וברור'
+    ],
     '1.8': [
       'מסך הגדרות חדש — שם, ענן ומכשירים ומפתח המלונות, הכול במקום אחד',
       'עיר בית: בוחרים את עיר המוצא שלכם, והשעון הימני מציג את השעה בה'
@@ -46,6 +50,7 @@
   var state = {
     trips: [],
     stops: [],
+    stopCounts: {},
     members: [],
     journal: [],
     documents: [],
@@ -151,6 +156,13 @@
   function currentTrip() {
     return state.trips.find(function (t) { return t.id === state.currentTripId; }) || null;
   }
+  /* ---------- היסטוריית טיולים (ארכיון) ----------
+     טיול מאורכב (archived=true) יוצא מהרשימה הפעילה ונשמר בהיסטוריה עם
+     היומן והתמונות. פתיחתו מההיסטוריה היא לצפייה בלבד (viewingArchived). */
+  function isArchivedTrip(trip) { return !!(trip && trip.archived); }
+  function activeTrips() { return state.trips.filter(function (t) { return !t.archived; }); }
+  function archivedTrips() { return state.trips.filter(function (t) { return !!t.archived; }); }
+  function viewingArchived() { return isArchivedTrip(currentTrip()); }
   function tripStops() {
     return state.stops.slice().sort(function (a, b) {
       return String(a.arrivalDate || '9999').localeCompare(String(b.arrivalDate || '9999'));
@@ -171,7 +183,7 @@
   }
   function activeStop() {
     var trip = currentTrip();
-    if (!trip) return null;
+    if (!trip || trip.archived) return null; // טיול בארכיון לעולם לא מספק חלק פעיל
     var id = trip.activeStopId;
     if (id === 'auto' || id == null) id = autoStopId();
     return state.stops.find(function (s) { return s.id === id; }) || tripStops()[0] || null;
@@ -185,9 +197,15 @@
       state.trips = res[0];
       state.members = res[2];
       if (!state.trips.find(function (t) { return t.id === state.currentTripId; })) {
-        state.currentTripId = state.trips.length ? state.trips[0].id : null;
+        // ברירת מחדל: הטיול הפעיל הראשון — לא טיול מהארכיון
+        var firstActive = state.trips.find(function (t) { return !t.archived; });
+        state.currentTripId = firstActive ? firstActive.id : null;
       }
       var trip = currentTrip();
+      state.stopCounts = {};
+      res[1].forEach(function (s) {
+        state.stopCounts[s.tripId] = (state.stopCounts[s.tripId] || 0) + 1;
+      });
       state.stops = res[1].filter(function (s) { return trip && s.tripId === trip.id; });
       state.journal = res[3].filter(function (j) { return trip && j.tripId === trip.id; })
         .sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
@@ -249,6 +267,10 @@
     if (stop) {
       label.textContent = '📍 ' + (stop.city || stop.country || 'היעד');
       tickClock($('clock-dest'), $('date-dest'), stop.timezone || 'UTC');
+    } else if (trip && trip.archived) {
+      label.textContent = '📚 ' + (trip.name || 'טיול בארכיון');
+      $('clock-dest').textContent = '--:--:--';
+      $('date-dest').textContent = 'טיול בארכיון';
     } else if (trip) {
       label.textContent = '🌍 ' + (trip.country || 'היעד');
       $('clock-dest').textContent = '--:--:--';
@@ -283,6 +305,8 @@
     var html = '';
     if (!trip) {
       html = '<option value="">אין טיול</option>';
+    } else if (trip.archived) {
+      html = '<option value="">📚 טיול בארכיון — לצפייה בלבד</option>';
     } else {
       html = '<option value="auto">🔄 אוטומטי (לפי התאריך של היום)</option>' +
         stops.map(function (s) {
@@ -290,16 +314,21 @@
         }).join('');
     }
     stopSel.innerHTML = html;
-    stopSel.value = trip && trip.activeStopId != null ? String(trip.activeStopId) : 'auto';
+    if (trip && !trip.archived) {
+      stopSel.value = trip.activeStopId != null ? String(trip.activeStopId) : 'auto';
+    }
   }
 
   /* ---------- רינדור: בית ---------- */
   function renderHome() {
     var trip = currentTrip();
+    var archived = isArchivedTrip(trip);
     $('no-trip-msg').hidden = !!trip;
-    $('trip-box').hidden = !trip;
-    if (trip) {
-      $('trip-select').innerHTML = state.trips.map(function (t) {
+    $('trip-box').hidden = !trip || archived;
+    var archBox = $('trip-archived-box');
+    if (archBox) archBox.hidden = !archived;
+    if (trip && !archived) {
+      $('trip-select').innerHTML = activeTrips().map(function (t) {
         return '<option value="' + t.id + '"' + (t.id === trip.id ? ' selected' : '') + '>' + esc(t.name) + '</option>';
       }).join('');
       var stop = activeStop();
@@ -312,6 +341,41 @@
           '</strong>' + (stop.arrivalDate ? ' · ' + fmtDate(stop.arrivalDate) : '') +
           (stop.departureDate ? ' ← ' + fmtDate(stop.departureDate) : '') + '</div>' : '');
     }
+    if (archived) {
+      $('trip-archived-summary').innerHTML =
+        '<div><strong>' + esc(trip.name) + '</strong> · ' + esc(trip.country || '') +
+        ' <span class="badge archive">📚 בארכיון</span></div>' +
+        '<div class="item-sub">' +
+        (trip.startDate ? fmtDate(trip.startDate) : '') +
+        (trip.endDate ? ' ← ' + fmtDate(trip.endDate) : '') + '</div>' +
+        (trip.archivedAt ? '<div class="item-sub">נשמר להיסטוריה ב־' +
+          fmtDate(String(trip.archivedAt).slice(0, 10)) + '</div>' : '');
+    }
+    renderHistory();
+  }
+
+  /* ---------- רינדור: היסטוריית טיולים ---------- */
+  function renderHistory() {
+    var card = $('history-card');
+    var listEl = $('history-list');
+    if (!card || !listEl) return;
+    var arch = archivedTrips().slice().sort(function (a, b) {
+      return String(b.archivedAt || '').localeCompare(String(a.archivedAt || ''));
+    });
+    card.hidden = !arch.length;
+    if (!arch.length) { listEl.innerHTML = ''; return; }
+    listEl.innerHTML = arch.map(function (t) {
+      var n = state.stopCounts[t.id] || 0;
+      return '<div class="list-item">' +
+        '<div class="item-title">' + esc(t.name) + '</div>' +
+        '<div class="item-sub">' + esc(t.country || '') +
+        (t.startDate ? ' · ' + fmtDate(t.startDate) : '') +
+        (t.endDate ? ' ← ' + fmtDate(t.endDate) : '') +
+        ' · ' + n + ' חלקים</div>' +
+        '<div class="item-actions">' +
+        '<button class="btn small" data-hist-open="' + t.id + '">👁 פתח לצפייה</button>' +
+        '</div></div>';
+    }).join('');
   }
 
   /* ---------- השלמת קואורדינטות אוטומטית ----------
@@ -378,6 +442,12 @@
   function renderWeather() {
     var box = $('weather-days');
     var placeEl = $('weather-place');
+    var tripNow = currentTrip();
+    if (tripNow && tripNow.archived) {
+      placeEl.textContent = '📚 הטיול בארכיון — התחזית תוצג שוב אחרי שחזור הטיול.';
+      box.innerHTML = '';
+      return;
+    }
     var stop = activeStop();
     if (!stop) {
       placeEl.textContent = 'בחר טיול וחלק עם מיקום כדי לראות מזג אוויר.';
@@ -430,6 +500,12 @@
 
   /* ---------- רינדור: מסלול ושותפים ---------- */
   function renderRoute() {
+    var readOnly = viewingArchived();
+    var newStopBtn = $('btn-new-stop');
+    if (newStopBtn) newStopBtn.hidden = readOnly;
+    if (readOnly) $('stop-form').hidden = true;
+    var memberForm = $('member-form');
+    if (memberForm) memberForm.hidden = readOnly;
     var list = $('stops-list');
     var stops = tripStops();
     var trip = currentTrip();
@@ -446,11 +522,12 @@
           (s.arrivalDate ? ' · הגעה ' + fmtDate(s.arrivalDate) : '') +
           (s.departureDate ? ' · עזיבה ' + fmtDate(s.departureDate) : '') + '</div>' +
           (s.authorName ? '<div class="author-tag">עודכן על ידי ' + esc(s.authorName) + '</div>' : '') +
+          (readOnly ? '' :
           '<div class="item-actions">' +
           '<button class="btn small" data-act="activate" data-id="' + s.id + '">סמן כחלק פעיל</button>' +
           '<button class="btn small" data-act="edit" data-id="' + s.id + '">ערוך</button>' +
           '<button class="btn small danger" data-act="delete" data-id="' + s.id + '">מחק</button>' +
-          '</div></div>';
+          '</div>') + '</div>';
       }).join('');
     }
 
@@ -461,7 +538,8 @@
       ml.innerHTML = state.members.map(function (m) {
         return '<div class="list-item"><div class="item-title">' + esc(m.name) +
           '<span class="badge gray">' + (m.role === 'follower' ? 'עוקב' : 'שותף מעדכן') + '</span></div>' +
-          '<div class="item-actions"><button class="btn small danger" data-member-del="' + m.id + '">הסר</button></div></div>';
+          (readOnly ? '' :
+          '<div class="item-actions"><button class="btn small danger" data-member-del="' + m.id + '">הסר</button></div>') + '</div>';
       }).join('');
     }
   }
@@ -780,10 +858,14 @@
 
   /* ---------- רינדור: יומן ---------- */
   function renderJournal() {
+    var readOnly = viewingArchived();
+    var form = $('journal-form');
+    if (form) form.hidden = readOnly;
     var list = $('journal-list');
     if (!currentTrip()) { list.innerHTML = ''; return; }
     if (!state.journal.length) {
-      list.innerHTML = '<div class="card"><div class="empty">היומן ריק. הוסף את הרשומה הראשונה.</div></div>';
+      list.innerHTML = '<div class="card"><div class="empty">היומן ריק.' +
+        (readOnly ? '' : ' הוסף את הרשומה הראשונה.') + '</div></div>';
       return;
     }
     list.innerHTML = state.journal.map(function (j) {
@@ -795,7 +877,8 @@
         '<div class="item-sub">' + esc(fmtDateShort(j.date)) +
         (j.authorName ? ' · נכתב על ידי ' + esc(j.authorName) : '') + '</div>' +
         (j.text ? '<div>' + esc(j.text) + '</div>' : '') + img +
-        '<div class="item-actions"><button class="btn small danger" data-journal-del="' + j.id + '">מחק רשומה</button></div>' +
+        (readOnly ? '' :
+        '<div class="item-actions"><button class="btn small danger" data-journal-del="' + j.id + '">מחק רשומה</button></div>') +
         '</div>';
     }).join('');
   }
@@ -803,6 +886,9 @@
   /* ---------- רינדור: מסמכים ---------- */
   var CATEGORIES = { insurance: '🛡️ ביטוח', booking: '🏨 הזמנה', ticket: '🎫 כרטיס', other: '📄 אחר' };
   function renderDocuments() {
+    var readOnly = viewingArchived();
+    var form = $('document-form');
+    if (form) form.hidden = readOnly;
     var list = $('documents-list');
     if (!currentTrip()) { list.innerHTML = ''; return; }
     if (!state.documents.length) {
@@ -825,7 +911,7 @@
             '<div class="item-actions">' +
             (url ? '<a class="btn small" target="_blank" rel="noopener" href="' + url + '">צפה</a>' +
               '<a class="btn small" download="' + esc(d.fileName || d.title) + '" href="' + url + '">הורד</a>' : '') +
-            '<button class="btn small danger" data-doc-del="' + d.id + '">מחק</button>' +
+            (readOnly ? '' : '<button class="btn small danger" data-doc-del="' + d.id + '">מחק</button>') +
             '</div></div>';
         }).join('') + '</div>';
     }).join('');
@@ -924,7 +1010,7 @@
     var bar = $('parts-bar');
     if (!bar) return;
     var trip = currentTrip();
-    if (!trip) { bar.hidden = true; bar.innerHTML = ''; return; }
+    if (!trip || trip.archived) { bar.hidden = true; bar.innerHTML = ''; return; }
     var stops = tripStops();
     var mode = trip.activeStopId == null ? 'auto' : trip.activeStopId;
     var current = activeStop();
@@ -1203,8 +1289,11 @@
     var hb = getHomeBase();
     var el = $('home-base-current');
     if (el) {
-      el.textContent = 'עיר הבית: ' + hb.name + (hb.country ? ' · ' + hb.country : '') +
-        ' · אזור זמן: ' + hb.timezone;
+      // שורה בולטת בגודל מלא — שהמשתמש יראה מיד שהעיר נקלטה
+      el.innerHTML =
+        '<div class="home-base-value">✓ עיר הבית: ' + esc(hb.name) +
+        (hb.country ? ' · ' + esc(hb.country) : '') + '</div>' +
+        '<div class="muted">אזור זמן: ' + esc(hb.timezone) + '</div>';
     }
     var resetBtn = $('home-base-reset');
     if (resetBtn) resetBtn.hidden = !isHomeBaseCustom();
@@ -1255,6 +1344,63 @@
     renderDocuments();
   }
 
+  /* ---------- פעולות ארכיון: סיום ושמירה, שחזור, מחיקה לצמיתות ---------- */
+  function archiveCurrentTrip() {
+    var trip = currentTrip();
+    if (!trip || trip.archived) return;
+    if (!confirm('לסיים את הטיול "' + trip.name + '" ולשמור אותו בהיסטוריית הטיולים?\nהיומן, התמונות והמסמכים יישמרו שם — ואפשר יהיה לשחזר אותו בכל עת.')) return;
+    trip.archived = true;
+    trip.archivedAt = new Date().toISOString();
+    DB.put('trips', trip).then(function () {
+      // יוצאים מהטיול המאורכב נקי: עוברים לטיול פעיל אחר, אם יש
+      var next = state.trips.find(function (t) { return !t.archived && t.id !== trip.id; });
+      state.currentTripId = next ? next.id : null;
+      if (state.currentTripId) localStorage.setItem('ta.currentTripId', String(state.currentTripId));
+      else localStorage.removeItem('ta.currentTripId');
+      showScreen('home');
+      loadAll().then(function () { toast('הטיול נשמר בהיסטוריית הטיולים 📚'); });
+    });
+  }
+  function restoreTrip(trip) {
+    if (!trip || !trip.archived) return;
+    trip.archived = false;
+    trip.archivedAt = null;
+    DB.put('trips', trip).then(function () {
+      state.currentTripId = trip.id;
+      localStorage.setItem('ta.currentTripId', String(trip.id));
+      showScreen('home');
+      loadAll().then(function () { toast('הטיול שוחזר לטיולים הפעילים ↩️'); });
+    });
+  }
+  /* מחיקת טיול עם כל הרשומות התלויות בו — לפי tripId, לא לפי מה שנטען למסך */
+  function purgeTripRecords(tripId) {
+    return Promise.all([
+      DB.byIndex('stops', 'tripId', tripId),
+      DB.byIndex('journal', 'tripId', tripId),
+      DB.byIndex('documents', 'tripId', tripId)
+    ]).then(function (res) {
+      var jobs = [];
+      res[0].forEach(function (s) { jobs.push(DB.remove('stops', s.id)); });
+      res[1].forEach(function (j) { jobs.push(DB.remove('journal', j.id)); });
+      res[2].forEach(function (d) { jobs.push(DB.remove('documents', d.id)); });
+      jobs.push(DB.remove('trips', tripId));
+      return Promise.all(jobs);
+    });
+  }
+  function deleteTripPermanently(trip) {
+    if (!trip) return;
+    if (!confirm('למחוק לצמיתות את הטיול "' + trip.name + '"?\nכל החלקים, היומן, התמונות והמסמכים שלו יימחקו — גם מהענן. אי אפשר לשחזר.')) return;
+    var wasCurrent = state.currentTripId === trip.id;
+    purgeTripRecords(trip.id).then(function () {
+      if (wasCurrent) {
+        state.currentTripId = null;
+        localStorage.removeItem('ta.currentTripId');
+      }
+      showScreen('home');
+      loadAll().then(function () { toast('הטיול נמחק לצמיתות'); });
+    });
+  }
+
   /* ---------- אירועים ---------- */
   function bindEvents() {
     document.querySelectorAll('.nav-btn').forEach(function (b) {
@@ -1272,7 +1418,7 @@
 
     $('active-stop-select').addEventListener('change', function () {
       var trip = currentTrip();
-      if (!trip) return;
+      if (!trip || trip.archived) return;
       trip.activeStopId = this.value === 'auto' ? 'auto' : Number(this.value);
       DB.put('trips', trip).then(function () { renderAll(); toast('החלק הפעיל עודכן'); });
     });
@@ -1280,7 +1426,7 @@
       var chip = e.target.closest('button[data-part]');
       if (!chip) return;
       var trip = currentTrip();
-      if (!trip) return;
+      if (!trip || trip.archived) return;
       trip.activeStopId = chip.dataset.part === 'auto' ? 'auto' : Number(chip.dataset.part);
       DB.put('trips', trip).then(function () { loadAll(); });
     });
@@ -1289,6 +1435,21 @@
       localStorage.setItem('ta.currentTripId', String(state.currentTripId));
       loadAll();
     });
+
+    /* היסטוריית טיולים: פתיחת טיול מאורכב לצפייה */
+    $('history-list').addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-hist-open]');
+      if (!btn) return;
+      var id = Number(btn.dataset.histOpen);
+      if (!state.trips.find(function (t) { return t.id === id; })) return;
+      state.currentTripId = id;
+      localStorage.setItem('ta.currentTripId', String(id));
+      showScreen('home');
+      loadAll();
+    });
+    $('btn-archive-trip').addEventListener('click', archiveCurrentTrip);
+    $('btn-restore-trip').addEventListener('click', function () { restoreTrip(currentTrip()); });
+    $('btn-delete-trip-permanent').addEventListener('click', function () { deleteTripPermanently(currentTrip()); });
 
     /* קישור תאריכי טווח (התחלה ↔ סיום) בכל טפסי הטווח */
     var syncTripDates = linkDateRange($('trip-start'), $('trip-end'));
@@ -1380,7 +1541,7 @@
 
     /* חלקי טיול */
     $('btn-new-stop').addEventListener('click', function () {
-      if (!currentTrip()) { toast('צור קודם טיול'); return; }
+      if (!currentTrip() || viewingArchived()) { toast('צור קודם טיול'); return; }
       $('stop-form').reset();
       syncStopDates(); // מנקה min/max שאולי נשארו מעריכה קודמת
       $('stop-id').value = '';
@@ -1416,7 +1577,7 @@
     $('stop-form').addEventListener('submit', function (e) {
       e.preventDefault();
       var trip = currentTrip();
-      if (!trip) return;
+      if (!trip || trip.archived) return;
       if (!dateRangeValid($('stop-arrival').value, $('stop-departure').value)) {
         toast('תאריך הסיום חייב להיות ביום ההתחלה או אחריו');
         return;
@@ -1446,7 +1607,7 @@
       var id = Number(btn.dataset.id);
       var stop = state.stops.find(function (s) { return s.id === id; });
       var trip = currentTrip();
-      if (!stop || !trip) return;
+      if (!stop || !trip || trip.archived) return;
       if (btn.dataset.act === 'activate') {
         trip.activeStopId = id;
         DB.put('trips', trip).then(function () { renderAll(); toast('"' + (stop.city || '') + '" הוא החלק הפעיל'); });
@@ -1477,6 +1638,7 @@
     /* שותפים */
     $('member-form').addEventListener('submit', function (e) {
       e.preventDefault();
+      if (viewingArchived()) { toast('הטיול בארכיון — לצפייה בלבד'); return; }
       var name = $('member-name').value.trim();
       if (!name) return;
       DB.add('members', { name: name, role: $('member-role').value }).then(function () {
@@ -1551,6 +1713,7 @@
       e.preventDefault();
       var trip = currentTrip();
       if (!trip) { toast('צור קודם טיול'); return; }
+      if (trip.archived) { toast('הטיול בארכיון — לצפייה בלבד'); return; }
       var entry = {
         tripId: trip.id,
         date: $('journal-date').value || todayStr(),
@@ -1604,6 +1767,7 @@
       e.preventDefault();
       var trip = currentTrip();
       if (!trip) { toast('צור קודם טיול'); return; }
+      if (trip.archived) { toast('הטיול בארכיון — לצפייה בלבד'); return; }
       var file = $('document-file').files[0];
       if (!file) return;
       DB.add('documents', {
