@@ -1,14 +1,27 @@
 /* sw.js — Service Worker: שמירת מעטפת האפליקציה לעבודה אופליין.
    נתוני API (מזג אוויר, מפות) תמיד נטענים מהרשת כשהיא זמינה. */
-var CACHE_NAME = 'travel-app-shell-v16';
+var CACHE_NAME = 'travel-app-shell-v17';
 var SHELL = [
   './',
   'index.html',
   'style.css',
+  'js/main.js',
+  'js/utils.js',
+  'js/version.js',
+  'js/state.js',
   'js/db.js',
   'js/api.js',
   'js/cloud.js',
-  'js/app.js',
+  'js/clocks.js',
+  'js/core.js',
+  'js/trips.js',
+  'js/archive.js',
+  'js/discovery.js',
+  'js/stays.js',
+  'js/journal.js',
+  'js/documents.js',
+  'js/whatsnew.js',
+  'js/settings.js',
   'manifest.webmanifest',
   'icon.svg'
 ];

@@ -17,7 +17,7 @@
   <div class="topbar-brand">
     <span class="brand-name">🧳 הטיולים שלי</span>
     <span class="topbar-brand-actions">
-      <span id="app-version-label" class="version-tag">גרסה 1.9</span>
+      <span id="app-version-label" class="version-tag">גרסה 2.0</span>
       <button type="button" id="btn-settings" class="gear-btn" aria-label="הגדרות" title="הגדרות">⚙️</button>
     </span>
   </div>
@@ -349,7 +349,7 @@
 
     <div class="card">
       <h2>ℹ️ אודות</h2>
-      <div class="muted">אפליקציית הטיולים שלי · <span id="settings-version">גרסה 1.9</span></div>
+      <div class="muted">אפליקציית הטיולים שלי · <span id="settings-version">גרסה 2.0</span></div>
       <div class="form-actions">
         <button type="button" class="btn small" id="btn-whatsnew-again">📜 מה חדש — כל הגרסאות</button>
       </div>
@@ -389,7 +389,7 @@
 
 <div id="whatsnew-backdrop" hidden></div>
 <div id="whatsnew" hidden role="dialog" aria-modal="true" aria-labelledby="whatsnew-title">
-  <h3 id="whatsnew-title" class="whatsnew-title">🎉 מה חדש בגרסה 1.9</h3>
+  <h3 id="whatsnew-title" class="whatsnew-title">🎉 מה חדש בגרסה 2.0</h3>
   <ul id="whatsnew-list" class="whatsnew-list"></ul>
   <button type="button" id="whatsnew-close" class="btn primary big">הבנתי</button>
 </div>
@@ -405,10 +405,7 @@
 
 <div id="toast" hidden></div>
 
-<script src="js/db.js"></script>
-<script src="js/api.js"></script>
-<script src="js/cloud.js"></script>
-<script src="js/app.js"></script>
+<script type="module" src="js/main.js"></script>
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
