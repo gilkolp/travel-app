@@ -17,7 +17,7 @@
   <div class="topbar-brand">
     <span class="brand-name">🧳 הטיולים שלי</span>
     <span class="topbar-brand-actions">
-      <span id="app-version-label" class="version-tag">גרסה 1.8</span>
+      <span id="app-version-label" class="version-tag">גרסה 1.9</span>
       <button type="button" id="btn-settings" class="gear-btn" aria-label="הגדרות" title="הגדרות">⚙️</button>
     </span>
   </div>
@@ -57,7 +57,18 @@
           <select id="trip-select"></select>
         </label>
         <div id="trip-summary" class="trip-summary"></div>
-        <button class="btn danger small" id="btn-delete-trip">מחק טיול</button>
+        <div class="form-actions">
+          <button class="btn small" id="btn-archive-trip">📚 סיים ושמור להיסטוריה</button>
+          <button class="btn danger small" id="btn-delete-trip">מחק טיול</button>
+        </div>
+      </div>
+      <div id="trip-archived-box" hidden>
+        <div id="trip-archived-summary"></div>
+        <div class="form-actions">
+          <button class="btn primary small" id="btn-restore-trip">↩️ שחזר לטיולים פעילים</button>
+          <button class="btn danger small" id="btn-delete-trip-permanent">🗑 מחק לצמיתות</button>
+        </div>
+        <p class="hint">הטיול נמצא בארכיון — מוצג לצפייה בלבד. היומן, התמונות והמסמכים שמורים בו כמו שהם.</p>
       </div>
       <form id="trip-form" class="form" hidden>
         <h3>טיול חדש</h3>
@@ -82,6 +93,11 @@
         </div>
         <p class="hint">ייווצר אוטומטית "חלק כללי" על שם המדינה. אפשר לחלק אחר כך לערים במסך "מסלול".</p>
       </form>
+    </div>
+
+    <div class="card" id="history-card" hidden>
+      <h2>📚 היסטוריית טיולים</h2>
+      <div id="history-list"></div>
     </div>
 
     <div class="card" id="weather-card">
@@ -314,7 +330,7 @@
 
     <div class="card">
       <h2>🏠 עיר הבית</h2>
-      <div id="home-base-current" class="muted"></div>
+      <div id="home-base-current"></div>
       <label class="field">
         <span>חיפוש עיר בית (השעון הימני בכותרת יציג את השעה בה)</span>
         <input type="text" id="home-base-search" placeholder="למשל: לונדון" autocomplete="off">
@@ -333,7 +349,7 @@
 
     <div class="card">
       <h2>ℹ️ אודות</h2>
-      <div class="muted">אפליקציית הטיולים שלי · <span id="settings-version">גרסה 1.8</span></div>
+      <div class="muted">אפליקציית הטיולים שלי · <span id="settings-version">גרסה 1.9</span></div>
       <div class="form-actions">
         <button type="button" class="btn small" id="btn-whatsnew-again">📜 מה חדש — כל הגרסאות</button>
       </div>
@@ -373,7 +389,7 @@
 
 <div id="whatsnew-backdrop" hidden></div>
 <div id="whatsnew" hidden role="dialog" aria-modal="true" aria-labelledby="whatsnew-title">
-  <h3 id="whatsnew-title" class="whatsnew-title">🎉 מה חדש בגרסה 1.8</h3>
+  <h3 id="whatsnew-title" class="whatsnew-title">🎉 מה חדש בגרסה 1.9</h3>
   <ul id="whatsnew-list" class="whatsnew-list"></ul>
   <button type="button" id="whatsnew-close" class="btn primary big">הבנתי</button>
 </div>
