@@ -7,8 +7,12 @@
   var $ = function (id) { return document.getElementById(id); };
 
   /* ---------- גרסת האפליקציה ורשימת השינויים ---------- */
-  var APP_VERSION = '1.7';
+  var APP_VERSION = '1.8';
   var CHANGELOG = {
+    '1.8': [
+      'מסך הגדרות חדש — שם, ענן ומכשירים ומפתח המלונות, הכול במקום אחד',
+      'עיר בית: בוחרים את עיר המוצא שלכם, והשעון הימני מציג את השעה בה'
+    ],
     '1.7': [
       'השם הוא חובה קבועה: אפשר לשנות אותו, אבל לא למחוק'
     ],
@@ -192,6 +196,34 @@
     });
   }
 
+  /* ---------- עיר הבית (השעון הימני) ----------
+     נשמרת ב־localStorage 'ta_home_base' כ־{name, country, lat, lon, timezone}.
+     אזור הזמן מגיע מחיפוש העיר (Open-Meteo) — בדיוק כמו לחלקי הטיול.
+     כשלא הוגדרה: ירושלים, Asia/Jerusalem (כמו שהיה עד עכשיו). */
+  var HOME_BASE_KEY = 'ta_home_base';
+  var HOME_BASE_DEFAULT = { name: 'ירושלים', country: 'ישראל', lat: 31.7683, lon: 35.2137, timezone: 'Asia/Jerusalem' };
+  function getHomeBase() {
+    try {
+      var raw = localStorage.getItem(HOME_BASE_KEY);
+      if (raw) {
+        var hb = JSON.parse(raw);
+        if (hb && hb.timezone) {
+          return {
+            name: hb.name || HOME_BASE_DEFAULT.name,
+            country: hb.country || '',
+            lat: hb.lat != null ? hb.lat : HOME_BASE_DEFAULT.lat,
+            lon: hb.lon != null ? hb.lon : HOME_BASE_DEFAULT.lon,
+            timezone: hb.timezone
+          };
+        }
+      }
+    } catch (e) {}
+    return HOME_BASE_DEFAULT;
+  }
+  function isHomeBaseCustom() {
+    try { return !!localStorage.getItem(HOME_BASE_KEY); } catch (e) { return false; }
+  }
+
   /* ---------- שעונים ---------- */
   function tickClock(el, dateEl, tz) {
     try {
@@ -207,7 +239,10 @@
     }
   }
   function tickClocks() {
-    tickClock($('clock-il'), $('date-il'), 'Asia/Jerusalem');
+    var hb = getHomeBase();
+    var homeLabel = $('clock-home-label');
+    if (homeLabel) homeLabel.textContent = '🏠 ' + hb.name;
+    tickClock($('clock-il'), $('date-il'), hb.timezone);
     var stop = activeStop();
     var trip = currentTrip();
     var label = $('clock-dest-label');
@@ -236,6 +271,7 @@
     if (name === 'home') renderWeather();
     if (name === 'stay') renderStay();
     if (name === 'discover') renderDiscoverHead();
+    if (name === 'settings') renderSettings();
     window.scrollTo(0, 0);
   }
 
@@ -701,17 +737,9 @@
     } else {
       box.innerHTML =
         '<h3>🏨 מחירי מלונות (LiteAPI)</h3>' +
-        '<p class="hint">אפשר לחבר מפתח Sandbox חינמי של LiteAPI (נרשמים ב־liteapi.travel) כדי לראות כאן מחירי מלונות אמיתיים לפי החלק הפעיל והתאריכים שלו. המפתח נשמר רק במכשיר שלך.</p>' +
-        '<label class="field"><span>API Key</span>' +
-        '<input type="text" id="liteapi-key" autocomplete="off" placeholder="LiteAPI API Key"></label>' +
-        '<div class="form-actions"><button type="button" class="btn primary" id="btn-liteapi-save">שמור מפתח</button></div>';
-      $('btn-liteapi-save').addEventListener('click', function () {
-        var key = $('liteapi-key').value.trim();
-        if (!key) { toast('מלא את שדה המפתח'); return; }
-        try { localStorage.setItem('liteapi_key', key); } catch (e) {}
-        renderLiteApiBox();
-        toast('המפתח נשמר במכשיר');
-      });
+        '<p class="hint">כדי לראות כאן מחירי מלונות אמיתיים צריך לחבר מפתח LiteAPI — המפתח מוגדר בהגדרות.</p>' +
+        '<div class="form-actions"><button type="button" class="btn" id="btn-liteapi-goto-settings">⚙️ פתח הגדרות</button></div>';
+      $('btn-liteapi-goto-settings').addEventListener('click', function () { showScreen('settings'); });
     }
   }
   function renderLiteApiResults(offers) {
@@ -936,6 +964,18 @@
     $('whatsnew').hidden = false;
     $('whatsnew-backdrop').hidden = false;
   }
+  // פתיחה חוזרת של הגיליון מכרטיס "אודות" בהגדרות — כל הגרסאות, מהחדשה לישנה
+  function showChangelogFull() {
+    var html = '';
+    Object.keys(CHANGELOG).forEach(function (v) {
+      html += '<li class="whatsnew-ver">גרסה ' + esc(v) + '</li>';
+      CHANGELOG[v].forEach(function (t) { html += '<li>' + esc(t) + '</li>'; });
+    });
+    $('whatsnew-title').textContent = '🎉 מה חדש — כל הגרסאות';
+    $('whatsnew-list').innerHTML = html;
+    $('whatsnew').hidden = false;
+    $('whatsnew-backdrop').hidden = false;
+  }
   // נקרא אחרי הטעינה הראשונית: מציג את החלון רק למי שכבר השתמש בגרסה קודמת.
   // משתמש חדש לגמרי (אין גרסה שמורה ואין שום נתונים) — הגרסה נשמרת בשקט, בלי חלון.
   // מחזיר true אם החלון הוצג (כדי שבקשת השם תחכה לסגירתו).
@@ -1146,6 +1186,58 @@
       joinBtn.disabled = false;
       toast('לא ניתן להתחבר לענן כרגע — נסה שוב מאוחר יותר');
     });
+  }
+
+  /* ---------- רינדור: הגדרות ---------- */
+  function renderSettings() {
+    var nameInput = $('cloud-display-name');
+    if (nameInput) nameInput.value = getDisplayName();
+    renderCloudStatus();
+    renderCloudToken();
+    renderHomeBase();
+    renderSettingsLiteApi();
+    var v = $('settings-version');
+    if (v) v.textContent = 'גרסה ' + APP_VERSION;
+  }
+  function renderHomeBase() {
+    var hb = getHomeBase();
+    var el = $('home-base-current');
+    if (el) {
+      el.textContent = 'עיר הבית: ' + hb.name + (hb.country ? ' · ' + hb.country : '') +
+        ' · אזור זמן: ' + hb.timezone;
+    }
+    var resetBtn = $('home-base-reset');
+    if (resetBtn) resetBtn.hidden = !isHomeBaseCustom();
+  }
+  /* מפתח LiteAPI — אותו אחסון ('liteapi_key') כמו שהיה בלינה; רק ה־UI עבר לכאן */
+  function renderSettingsLiteApi() {
+    var box = $('settings-liteapi-box');
+    if (!box) return;
+    if (liteapiKeySaved()) {
+      box.innerHTML =
+        '<p class="hint">מפתח שמור במכשיר הזה ✓ — מחירי המלונות פעילים במסך הלינה.</p>' +
+        '<div class="form-actions">' +
+        '<button type="button" class="btn danger" id="btn-settings-liteapi-disconnect">נתק והסר מפתח</button>' +
+        '</div>';
+      $('btn-settings-liteapi-disconnect').addEventListener('click', function () {
+        lsDel('liteapi_key');
+        renderSettingsLiteApi();
+        toast('המפתח הוסר מהמכשיר');
+      });
+    } else {
+      box.innerHTML =
+        '<p class="hint">אפשר לחבר מפתח Sandbox חינמי של LiteAPI (נרשמים ב־liteapi.travel) כדי לראות מחירי מלונות אמיתיים במסך הלינה לפי החלק הפעיל והתאריכים שלו. המפתח נשמר רק במכשיר שלך.</p>' +
+        '<label class="field"><span>API Key</span>' +
+        '<input type="text" id="settings-liteapi-key" autocomplete="off" placeholder="LiteAPI API Key"></label>' +
+        '<div class="form-actions"><button type="button" class="btn primary" id="btn-settings-liteapi-save">שמור מפתח</button></div>';
+      $('btn-settings-liteapi-save').addEventListener('click', function () {
+        var key = ($('settings-liteapi-key').value || '').trim();
+        if (!key) { toast('מלא את שדה המפתח'); return; }
+        lsSet('liteapi_key', key);
+        renderSettingsLiteApi();
+        toast('המפתח נשמר במכשיר');
+      });
+    }
   }
 
   /* ---------- רינדור כולל ---------- */
@@ -1586,6 +1678,46 @@
       var code = $('cloud-join-code').value.trim();
       if (!code || code === Cloud.getToken()) { toast('הזן קוד סנכרון של מכשיר אחר'); return; }
       joinCloudDevice(code, cloudJoinBtn);
+    });
+
+    /* הגדרות */
+    var settingsBtn = $('btn-settings');
+    if (settingsBtn) settingsBtn.addEventListener('click', function () { showScreen('settings'); });
+    var settingsBack = $('btn-settings-back');
+    if (settingsBack) settingsBack.addEventListener('click', function () { showScreen('home'); });
+    var whatsAgain = $('btn-whatsnew-again');
+    if (whatsAgain) whatsAgain.addEventListener('click', showChangelogFull);
+    var homeSearch = $('home-base-search');
+    if (homeSearch) homeSearch.addEventListener('input', function () {
+      var q = this.value.trim();
+      if (q.length < 2) { $('home-base-results').innerHTML = ''; return; }
+      API.geocode(q).then(function (results) {
+        var resultsBox = $('home-base-results');
+        resultsBox.innerHTML = results.map(function (g, i) {
+          return '<button type="button" data-geo="' + i + '">' + esc(g.name) + ' · ' + esc(g.country) +
+            (g.admin1 ? ' · ' + esc(g.admin1) : '') + '</button>';
+        }).join('');
+        resultsBox.querySelectorAll('button').forEach(function (btn, i) {
+          btn.addEventListener('click', function () {
+            var g = results[i];
+            lsSet(HOME_BASE_KEY, JSON.stringify({
+              name: g.name, country: g.country, lat: g.lat, lon: g.lon, timezone: g.timezone
+            }));
+            $('home-base-results').innerHTML = '';
+            $('home-base-search').value = '';
+            renderHomeBase();
+            tickClocks();
+            toast('עיר הבית: ' + g.name);
+          });
+        });
+      }).catch(function () { /* שקט: אפשר לנסות שוב */ });
+    });
+    var homeReset = $('home-base-reset');
+    if (homeReset) homeReset.addEventListener('click', function () {
+      lsDel(HOME_BASE_KEY);
+      renderHomeBase();
+      tickClocks();
+      toast('עיר הבית אופסה לירושלים');
     });
   }
 
