@@ -231,6 +231,12 @@ main { max-width: 640px; margin: 0 auto; padding: 12px; }
   background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.45);
   padding: 1px 8px; border-radius: 999px;
 }
+.topbar-brand-actions { display: flex; align-items: center; gap: 8px; }
+.gear-btn {
+  appearance: none; width: 34px; height: 34px; padding: 0; line-height: 1;
+  background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.45);
+  border-radius: 999px; color: #fff; font-size: 1rem; cursor: pointer;
+}
 
 /* ===== חלון "מה חדש בגרסה" ===== */
 #whatsnew-backdrop {
@@ -250,6 +256,7 @@ main { max-width: 640px; margin: 0 auto; padding: 12px; }
 .whatsnew-title { font-size: 1.15rem; margin: 0 0 10px; }
 .whatsnew-list { margin: 0 0 4px; padding-inline-start: 20px; line-height: 1.7; }
 .whatsnew-list li { margin-bottom: 6px; }
+.whatsnew-list li.whatsnew-ver { font-weight: 700; margin-top: 12px; list-style: none; }
 
 /* ===== חלון בקשת שם חד־פעמית (שדה חובה — נסגר רק בשמירת שם) ===== */
 #nameprompt-backdrop {

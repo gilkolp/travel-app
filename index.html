@@ -16,11 +16,14 @@
 <header id="topbar">
   <div class="topbar-brand">
     <span class="brand-name">🧳 הטיולים שלי</span>
-    <span id="app-version-label" class="version-tag">גרסה 1.7</span>
+    <span class="topbar-brand-actions">
+      <span id="app-version-label" class="version-tag">גרסה 1.8</span>
+      <button type="button" id="btn-settings" class="gear-btn" aria-label="הגדרות" title="הגדרות">⚙️</button>
+    </span>
   </div>
   <div class="clocks">
     <div class="clock">
-      <span class="clock-label">🇮🇱 ישראל</span>
+      <span class="clock-label" id="clock-home-label">🏠 ירושלים</span>
       <span id="clock-il" class="clock-time">--:--:--</span>
       <span id="date-il" class="clock-date"></span>
     </div>
@@ -104,34 +107,6 @@
       </div>
     </div>
 
-    <div class="card" id="cloud-card">
-      <h2>☁️ ענן וסנכרון</h2>
-      <div id="cloud-status" class="muted">ענן: בודק חיבור…</div>
-      <label class="field">
-        <span>השם שלי במכשיר הזה</span>
-        <input type="text" id="cloud-display-name" autocomplete="off" placeholder="למשל: גיל">
-      </label>
-      <p class="hint">השם יופיע אוטומטית ליד העדכונים שלך — לא צריך יותר לבחור מי מעדכן.</p>
-      <div class="form-actions">
-        <button type="button" class="btn small" id="cloud-name-save">שמור שם</button>
-      </div>
-      <label class="field">
-        <span>קוד הסנכרון של המכשיר הזה (סודי — רק למכשירים שלך)</span>
-        <input type="text" id="cloud-token" readonly autocomplete="off">
-      </label>
-      <div class="form-actions">
-        <button type="button" class="btn small" id="cloud-copy-btn">📋 העתק קוד</button>
-        <button type="button" class="btn small" id="cloud-token-toggle">👁️ הצג קוד</button>
-      </div>
-      <label class="field">
-        <span>חיבור המכשיר הזה לקוד של מכשיר אחר</span>
-        <input type="text" id="cloud-join-code" autocomplete="off" placeholder="הדבק כאן קוד סנכרון ממכשיר אחר">
-      </label>
-      <div class="form-actions">
-        <button type="button" class="btn primary" id="cloud-join-btn">חבר מכשיר זה</button>
-      </div>
-      <p class="hint">הטיולים נשמרים בענן תחת הקוד האישי שלך ומסונכרנים בין המכשירים שמחוברים אליו. שים לב: קבצי המסמכים עצמם נשארים לעת עתה במכשיר שבו הועלו — רשימת המסמכים כן מסונכרנת.</p>
-    </div>
   </section>
 
   <!-- ===== מסלול ===== -->
@@ -191,7 +166,7 @@
         </label>
         <button type="submit" class="btn primary">הוסף</button>
       </form>
-      <p class="hint">השם שהגדרת בכרטיס "☁️ ענן וסנכרון" נחתם אוטומטית ליד כל רשומת יומן, חלק ומסמך שתוסיף.</p>
+      <p class="hint">השם שהגדרת במסך ההגדרות (⚙️) נחתם אוטומטית ליד כל רשומת יומן, חלק ומסמך שתוסיף.</p>
     </div>
   </section>
 
@@ -295,6 +270,76 @@
     </div>
   </section>
 
+  <!-- ===== הגדרות ===== -->
+  <section id="screen-settings" class="screen">
+    <div class="card">
+      <div class="card-head">
+        <h2>⚙️ הגדרות</h2>
+        <button class="btn small" id="btn-settings-back">→ חזרה לבית</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>👤 השם שלי</h2>
+      <label class="field">
+        <span>השם שלי במכשיר הזה</span>
+        <input type="text" id="cloud-display-name" autocomplete="off" placeholder="למשל: גיל">
+      </label>
+      <p class="hint">השם יופיע אוטומטית ליד העדכונים שלך — לא צריך יותר לבחור מי מעדכן.</p>
+      <div class="form-actions">
+        <button type="button" class="btn small" id="cloud-name-save">שמור שם</button>
+      </div>
+    </div>
+
+    <div class="card" id="cloud-card">
+      <h2>☁️ ענן ומכשירים</h2>
+      <div id="cloud-status" class="muted">ענן: בודק חיבור…</div>
+      <label class="field">
+        <span>קוד הסנכרון של המכשיר הזה (סודי — רק למכשירים שלך)</span>
+        <input type="text" id="cloud-token" readonly autocomplete="off">
+      </label>
+      <div class="form-actions">
+        <button type="button" class="btn small" id="cloud-copy-btn">📋 העתק קוד</button>
+        <button type="button" class="btn small" id="cloud-token-toggle">👁️ הצג קוד</button>
+      </div>
+      <label class="field">
+        <span>חיבור המכשיר הזה לקוד של מכשיר אחר</span>
+        <input type="text" id="cloud-join-code" autocomplete="off" placeholder="הדבק כאן קוד סנכרון ממכשיר אחר">
+      </label>
+      <div class="form-actions">
+        <button type="button" class="btn primary" id="cloud-join-btn">חבר מכשיר זה</button>
+      </div>
+      <p class="hint">הטיולים נשמרים בענן תחת הקוד האישי שלך ומסונכרנים בין המכשירים שמחוברים אליו. שים לב: קבצי המסמכים עצמם נשארים לעת עתה במכשיר שבו הועלו — רשימת המסמכים כן מסונכרנת.</p>
+    </div>
+
+    <div class="card">
+      <h2>🏠 עיר הבית</h2>
+      <div id="home-base-current" class="muted"></div>
+      <label class="field">
+        <span>חיפוש עיר בית (השעון הימני בכותרת יציג את השעה בה)</span>
+        <input type="text" id="home-base-search" placeholder="למשל: לונדון" autocomplete="off">
+      </label>
+      <div id="home-base-results" class="search-results"></div>
+      <div class="form-actions">
+        <button type="button" class="btn small" id="home-base-reset" hidden>אפס לירושלים</button>
+      </div>
+      <p class="hint">כשלא מוגדרת עיר בית — השעון הימני מציג את ירושלים.</p>
+    </div>
+
+    <div class="card">
+      <h2>🔑 מפתח מחירי מלונות (LiteAPI)</h2>
+      <div id="settings-liteapi-box"></div>
+    </div>
+
+    <div class="card">
+      <h2>ℹ️ אודות</h2>
+      <div class="muted">אפליקציית הטיולים שלי · <span id="settings-version">גרסה 1.8</span></div>
+      <div class="form-actions">
+        <button type="button" class="btn small" id="btn-whatsnew-again">📜 מה חדש — כל הגרסאות</button>
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <nav id="bottomnav">
@@ -328,7 +373,7 @@
 
 <div id="whatsnew-backdrop" hidden></div>
 <div id="whatsnew" hidden role="dialog" aria-modal="true" aria-labelledby="whatsnew-title">
-  <h3 id="whatsnew-title" class="whatsnew-title">🎉 מה חדש בגרסה 1.7</h3>
+  <h3 id="whatsnew-title" class="whatsnew-title">🎉 מה חדש בגרסה 1.8</h3>
   <ul id="whatsnew-list" class="whatsnew-list"></ul>
   <button type="button" id="whatsnew-close" class="btn primary big">הבנתי</button>
 </div>
